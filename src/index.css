@@ -1,0 +1,89 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    /* Smooth anchor navigation; offset agar heading tidak tertutup navbar sticky (h-16) */
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
+  }
+
+  /* Hormati preferensi aksesibilitas */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    @apply bg-surface text-slate-800 font-sans;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: saturate(180%) blur(12px);
+  }
+}
+
+@layer components {
+  /* Placeholder untuk editor rich-text (contentEditable) saat kosong. */
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    @apply text-slate-400;
+    pointer-events: none;
+  }
+
+  /* Styling konten notulen (rich-text) — editor & tampilan read-only. */
+  .prose-note :where(p) {
+    margin: 0.25rem 0;
+  }
+  .prose-note :where(ul) {
+    list-style: disc;
+    padding-left: 1.25rem;
+    margin: 0.25rem 0;
+  }
+  .prose-note :where(ol) {
+    list-style: decimal;
+    padding-left: 1.25rem;
+    margin: 0.25rem 0;
+  }
+  .prose-note :where(h1) {
+    @apply text-base font-bold text-slate-900;
+    margin: 0.4rem 0 0.2rem;
+  }
+  .prose-note :where(h2, h3) {
+    @apply text-sm font-semibold text-slate-900;
+    margin: 0.4rem 0 0.2rem;
+  }
+  .prose-note :where(blockquote) {
+    @apply border-l-2 border-slate-200 pl-3 text-slate-500;
+    margin: 0.25rem 0;
+  }
+  .prose-note :where(a) {
+    @apply text-brand-600 underline;
+  }
+}
