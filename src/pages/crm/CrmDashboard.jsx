@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TrendingUp, Wallet, Trophy, Users, Building2, UserPlus, CalendarClock, ArrowRight, ShieldAlert, Percent, Radar } from 'lucide-react'
 import { crmApi } from '../../lib/api.js'
-import { formatCompactCurrency, formatCurrency, LEAD_STATUS_META, CUSTOMER_TYPE_META } from '../../data/crmData.js'
+import { formatCompactCurrency, formatCurrency, LEAD_STATUS_META, CUSTOMER_TYPE_META, serviceLineMeta } from '../../data/crmData.js'
 import { CrmPage, PageHeader, SummaryCards, ErrorBanner, LoadingBlock, Badge } from '../../components/crm/CrmUI.jsx'
 
 export default function CrmDashboard() {
@@ -40,6 +40,34 @@ export default function CrmDashboard() {
         <>
           <SummaryCards cards={cards} />
 
+          {/* Kontribusi tiap lini layanan terhadap pipeline terbuka. */}
+          {data.pipelineByServiceLine?.length > 0 && (
+            <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-slate-800">Pipeline per Lini Layanan <span className="text-xs font-normal text-slate-400">(deal terbuka)</span></h2>
+                <Link to="/crm/pipelines" className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
+                  Kelola pipeline <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+              <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                {data.pipelineByServiceLine.map((l) => {
+                  const meta = serviceLineMeta(l.serviceLine)
+                  const maxGross = Math.max(...data.pipelineByServiceLine.map((x) => x.gross), 1)
+                  return (
+                    <div key={l.serviceLine} className="rounded-xl border border-slate-200/70 p-4">
+                      <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${meta.cls}`}>{meta.label}</span>
+                      <p className="mt-2 text-xl font-bold tracking-tight text-slate-900">{formatCompactCurrency(l.gross)}</p>
+                      <p className="text-xs text-slate-400">{l.count} deal · tertimbang {formatCompactCurrency(l.weighted)}</p>
+                      <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${Math.round((l.gross / maxGross) * 100)}%` }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {data.winRateByPipeline?.length > 0 && (
             <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
               <h2 className="text-sm font-semibold text-slate-800">Win Rate per Pipeline <span className="text-xs font-normal text-slate-400">(recurring dikecualikan)</span></h2>
@@ -47,8 +75,9 @@ export default function CrmDashboard() {
                 {data.winRateByPipeline.map((p) => (
                   <div key={p.pipeline} className="flex items-center gap-3">
                     <span className="w-44 flex-none truncate text-xs font-medium text-slate-600" title={p.pipeline}>{p.pipeline}</span>
+                    <span className={`w-20 flex-none truncate rounded-md px-1.5 py-0.5 text-center text-[11px] font-medium ${serviceLineMeta(p.serviceLine).cls}`}>{serviceLineMeta(p.serviceLine).short}</span>
                     <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-full rounded-full bg-brand-500" style={{ width: `${p.winRate}%` }} />
+                      <div className={`h-full rounded-full ${serviceLineMeta(p.serviceLine).bar}`} style={{ width: `${p.winRate}%` }} />
                     </div>
                     <span className="w-24 flex-none text-right text-xs font-semibold text-slate-700">{p.winRate}% <span className="font-normal text-slate-400">({p.won}/{p.total})</span></span>
                   </div>

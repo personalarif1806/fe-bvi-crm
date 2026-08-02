@@ -1,9 +1,28 @@
 # Bumi Ventila — fe-crm
 
-Alat komersial **internal** (SPA React) untuk laboratorium lingkungan
-(ISO/IEC 17025): registry kepatuhan (Site → Sampling Point → Obligation) yang
-menggerakkan permintaan lewat kalender jatuh tempo regulasi, plus pipeline deal,
-quote & sales order, feasibility gate, dan lead scoring.
+Alat komersial **internal** (SPA React) untuk tiga lini layanan Bumi Ventila —
+**laboratorium** (ISO/IEC 17025), **training**, dan **konsultansi**: registry
+kepatuhan (Site → Sampling Point → Obligation) yang menggerakkan permintaan lewat
+kalender jatuh tempo regulasi, plus pipeline deal per lini, quote & sales order,
+feasibility gate, dan lead scoring.
+
+## Lini layanan & pipeline
+Tiap lini punya pipeline sendiri agar win rate dan forecast tidak tercampur.
+Lini diturunkan dari `type` pipeline (tidak disimpan terpisah di Deal):
+
+| Lini | Pipeline bawaan | Tipe |
+|---|---|---|
+| Laboratorium | Akuisisi Pengujian Lab (ISO 17025) | `COMPLIANCE_ACQUISITION` |
+| Laboratorium | Rebooking Kepatuhan (Recurring) | `COMPLIANCE_RECURRING` |
+| Training | Akuisisi Training | `TRAINING` |
+| Training | Refresher & Re-sertifikasi | `TRAINING_RECURRING` |
+| Konsultansi | Akuisisi Konsultansi | `CONSULTING` |
+
+Kelola & tambah pipeline di `/crm/pipelines` (buat dari template siap pakai).
+Gate kelayakan memakai model yang sama (`CrmFeasibilityReview`) di semua lini,
+hanya istilah checklist-nya menyesuaikan: lab memakai ruang lingkup akreditasi &
+subkontrak, training memakai kompetensi & ketersediaan trainer, konsultansi
+memakai kualifikasi tim & tenaga ahli eksternal.
 
 **Khusus peran internal** — pengguna `Customer` ditolak (guard rute + backend 403).
 
@@ -12,7 +31,7 @@ React 18 · Vite 5 · Tailwind 3 · React Router 6 · Framer Motion · Lucide ·
 
 ## Layar
 CRM Dashboard · Leads + Lead Detail · Accounts + Account Detail + Duplicates/Merge ·
-Contacts · Deals (list + board) + Deal Detail · Price Books · Quote Builder ·
+Contacts · Deals (list + board) + Deal Detail · Pipeline · Price Books · Quote Builder ·
 Sampling Points (+ Sites & Import Titik sebagai modal) · Compliance Calendar ·
 Activities · Meeting Notes · Scoring Settings.
 

@@ -8,7 +8,10 @@ import Modal, { Field, inputClass } from '../../components/Modal.jsx'
 import { CrmPage, ErrorBanner, LoadingBlock, Badge, PrimaryButton, GhostButton } from '../../components/crm/CrmUI.jsx'
 import { ActivityTimeline, ActivityFormModal } from '../../components/crm/ActivityTimeline.jsx'
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
-import { DEAL_STATUS_META, FEASIBILITY_META, LOST_REASON_LABEL, formatCurrency, formatDateTime } from '../../data/crmData.js'
+import {
+  DEAL_STATUS_META, FEASIBILITY_META, LOST_REASON_LABEL, feasibilityLabels, serviceLineMeta,
+  formatCurrency, formatDateTime,
+} from '../../data/crmData.js'
 
 export default function DealDetail() {
   const { code } = useParams()
@@ -75,6 +78,7 @@ export default function DealDetail() {
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
                 {deal.accountId && <Link to={`/crm/accounts/${deal.accountId}`} className="inline-flex items-center gap-1 hover:text-brand-600"><Building2 className="h-3.5 w-3.5" /> {deal.accountName}</Link>}
                 {deal.endClientAccountId && <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600"><Lock className="h-3 w-3" /> Klien akhir: {deal.endClientAccountId}</span>}
+                <span className={`inline-flex items-center rounded px-1.5 py-0.5 font-medium ${serviceLineMeta(deal.serviceLine).cls}`}>{serviceLineMeta(deal.serviceLine).label}</span>
                 <span>Pipeline: {deal.pipelineName}</span>
                 <span>Pemilik: {deal.ownerName}</span>
               </div>
@@ -95,7 +99,7 @@ export default function DealDetail() {
           {deal.status !== 'OPEN' && <span className="text-xs text-slate-400">Deal sudah {DEAL_STATUS_META[deal.status]?.label.toLowerCase()} — stage terkunci.</span>}
           {deal.lostReason && <span className="rounded-lg bg-rose-50 px-2.5 py-1 text-xs text-rose-700">Alasan kalah: {LOST_REASON_LABEL[deal.lostReason] || deal.lostReason}{deal.lostReasonNote ? ` — ${deal.lostReasonNote}` : ''}</span>}
           {deal.stageRequiresFeasibility === false && stages.some((s) => s.requiresFeasibility) && !['APPROVED', 'APPROVED_WITH_SUBCONTRACT'].includes(deal.feasibilityStatus) && (
-            <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs text-amber-700"><ShieldAlert className="h-3.5 w-3.5" /> Gate: butuh Feasibility APPROVED untuk lanjut ke Penawaran</span>
+            <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs text-amber-700"><ShieldAlert className="h-3.5 w-3.5" /> {feasibilityLabels(deal.serviceLine).gateHint}</span>
           )}
         </div>
       </div>
@@ -152,6 +156,9 @@ export default function DealDetail() {
 function FeasibilityPanel({ deal, canApprove, onOpen, onChanged, setError }) {
   const f = deal.feasibility
   const [busy, setBusy] = useState(false)
+  // Istilah checklist mengikuti lini layanan deal (lab / training / konsultansi);
+  // datanya tetap satu model CrmFeasibilityReview.
+  const L = feasibilityLabels(deal.serviceLine)
 
   async function decide(status) {
     setBusy(true)
@@ -163,28 +170,28 @@ function FeasibilityPanel({ deal, canApprove, onOpen, onChanged, setError }) {
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><ShieldCheck className="h-4 w-4 text-slate-400" /> Feasibility Gate <span className="text-xs font-normal text-slate-400">(kaji ulang teknis — ISO 17025 klausul 7.1)</span></h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><ShieldCheck className="h-4 w-4 text-slate-400" /> {L.title} <span className="text-xs font-normal text-slate-400">{L.caption}</span></h3>
         {f && <Badge meta={FEASIBILITY_META[f.status]} />}
       </div>
 
       {!f ? (
         <div className="mt-3 flex flex-col items-start gap-2">
-          <p className="text-sm text-slate-500">Belum ada kaji ulang kelayakan teknis. Deal tidak dapat lanjut ke stage Penawaran sebelum di-APPROVED.</p>
-          <PrimaryButton onClick={onOpen}><Plus className="h-4 w-4" /> Buat Feasibility Review</PrimaryButton>
+          <p className="text-sm text-slate-500">Belum ada kaji ulang. Deal tidak dapat lanjut ke stage penawaran/proposal sebelum di-APPROVED.</p>
+          <PrimaryButton onClick={onOpen}><Plus className="h-4 w-4" /> Buat {L.title}</PrimaryButton>
         </div>
       ) : (
         <div className="mt-3 space-y-3">
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
-            <Check label="Ruang lingkup terakreditasi" ok={f.scopeAccredited} />
-            <Check label="Kapasitas tersedia" ok={f.capacityAvailable} />
-            <Check label="Sampler tersedia" ok={f.samplerAvailable} />
-            <Check label="Butuh subkontrak" ok={f.requiresSubcontract} invert />
+            <Check label={L.scopeAccredited} ok={f.scopeAccredited} />
+            <Check label={L.capacityAvailable} ok={f.capacityAvailable} />
+            <Check label={L.samplerAvailable} ok={f.samplerAvailable} />
+            <Check label={L.requiresSubcontract} ok={f.requiresSubcontract} invert />
             <Check label="Persetujuan pelanggan" ok={f.customerConsent} muted={!f.requiresSubcontract} />
           </div>
           {f.outOfScopeParams.length > 0 && (
-            <p className="text-xs text-slate-500">Parameter di luar ruang lingkup: <span className="font-medium text-rose-600">{f.outOfScopeParams.join(', ')}</span></p>
+            <p className="text-xs text-slate-500">{L.outOfScope}: <span className="font-medium text-rose-600">{f.outOfScopeParams.join(', ')}</span></p>
           )}
-          {f.requiresSubcontract && f.subcontractLabName && <p className="text-xs text-slate-500">Lab subkontrak: <span className="font-medium">{f.subcontractLabName}</span></p>}
+          {f.requiresSubcontract && f.subcontractLabName && <p className="text-xs text-slate-500">{L.subcontractLabel}: <span className="font-medium">{f.subcontractLabName}</span></p>}
           {f.notes && <p className="text-xs text-slate-500">Catatan: {f.notes}</p>}
           {f.reviewedAt && <p className="text-xs text-slate-400">Diputus oleh {f.reviewerName} · {formatDateTime(f.reviewedAt)}</p>}
 
@@ -193,7 +200,7 @@ function FeasibilityPanel({ deal, canApprove, onOpen, onChanged, setError }) {
             {canApprove ? (
               <>
                 {!f.requiresSubcontract && <button disabled={busy} onClick={() => decide('APPROVED')} className="rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">Setujui</button>}
-                {f.requiresSubcontract && <button disabled={busy} onClick={() => decide('APPROVED_WITH_SUBCONTRACT')} className="rounded-xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60">Setujui + Subkontrak</button>}
+                {f.requiresSubcontract && <button disabled={busy} onClick={() => decide('APPROVED_WITH_SUBCONTRACT')} className="rounded-xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60">Setujui + {L.subcontractLabel}</button>}
                 <button disabled={busy} onClick={() => decide('REJECTED')} className="rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60">Tolak</button>
               </>
             ) : (
@@ -407,6 +414,7 @@ function Check({ label, ok, invert, muted }) {
 const emptyFeas = { scopeAccredited: true, capacityAvailable: true, samplerAvailable: true, requiresSubcontract: false, customerConsent: false, subcontractLabName: '', outOfScopeParams: '', notes: '' }
 
 function FeasibilityFormModal({ open, onClose, deal, onSaved }) {
+  const L = feasibilityLabels(deal.serviceLine)
   const [form, setForm] = useState(emptyFeas)
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
@@ -444,25 +452,25 @@ function FeasibilityFormModal({ open, onClose, deal, onSaved }) {
   )
 
   return (
-    <Modal open={open} onClose={onClose} title="Feasibility Review" subtitle="Kaji ulang kemampuan & sumber daya sebelum penawaran (klausul 7.1)." maxWidth="max-w-lg">
+    <Modal open={open} onClose={onClose} title={L.title} subtitle={L.modalSubtitle} maxWidth="max-w-lg">
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-1 gap-2.5 rounded-xl border border-slate-100 bg-slate-50/50 p-3 sm:grid-cols-2">
-          <Toggle k="scopeAccredited" label="Ruang lingkup terakreditasi" />
-          <Toggle k="capacityAvailable" label="Kapasitas tersedia" />
-          <Toggle k="samplerAvailable" label="Sampler tersedia" />
-          <Toggle k="requiresSubcontract" label="Butuh subkontrak" />
+          <Toggle k="scopeAccredited" label={L.scopeAccredited} />
+          <Toggle k="capacityAvailable" label={L.capacityAvailable} />
+          <Toggle k="samplerAvailable" label={L.samplerAvailable} />
+          <Toggle k="requiresSubcontract" label={L.requiresSubcontract} />
         </div>
-        <Field label="Parameter di Luar Ruang Lingkup" hint="pisahkan dengan ;" error={errors.outOfScopeParams}>
-          <input className={inputClass} value={form.outOfScopeParams} onChange={(e) => set('outOfScopeParams', e.target.value)} placeholder="Dioksin;Merkuri" />
+        <Field label={L.outOfScopeField} hint="pisahkan dengan ;" error={errors.outOfScopeParams}>
+          <input className={inputClass} value={form.outOfScopeParams} onChange={(e) => set('outOfScopeParams', e.target.value)} placeholder={L.outOfScopePlaceholder} />
         </Field>
         {form.requiresSubcontract && (
           <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
-            <Field label="Nama Lab Subkontrak" error={errors.subcontractLabName}>
-              <input className={inputClass} value={form.subcontractLabName} onChange={(e) => set('subcontractLabName', e.target.value)} placeholder="Lab Mitra Terakreditasi" />
+            <Field label={L.subcontractName} error={errors.subcontractLabName}>
+              <input className={inputClass} value={form.subcontractLabName} onChange={(e) => set('subcontractLabName', e.target.value)} placeholder={L.subcontractPlaceholder} />
             </Field>
             <label className="flex items-center gap-2 text-sm font-medium text-amber-800">
               <input type="checkbox" checked={form.customerConsent} onChange={(e) => set('customerConsent', e.target.checked)} className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-400" />
-              Pelanggan menyetujui subkontrak (wajib — klausul 6.6 / BR-12)
+              {L.consent}
             </label>
           </div>
         )}

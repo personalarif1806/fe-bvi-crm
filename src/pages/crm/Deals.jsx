@@ -7,8 +7,19 @@ import Modal, { Field, inputClass } from '../../components/Modal.jsx'
 import {
   CrmPage, PageHeader, SummaryCards, ErrorBanner, TableFooter, LoadingBlock, EmptyState, Badge, PrimaryButton, GhostButton,
 } from '../../components/crm/CrmUI.jsx'
-import { DEAL_STATUS_META, CUSTOMER_TYPE_META, formatCompactCurrency, formatCurrency, formatThousands } from '../../data/crmData.js'
+import {
+  DEAL_STATUS_META, CUSTOMER_TYPE_META, SERVICE_LINES, serviceLineMeta,
+  formatCompactCurrency, formatCurrency, formatThousands,
+} from '../../data/crmData.js'
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
+
+// Kelompokkan pipeline per lini layanan untuk <optgroup> di selector.
+// Pipeline tanpa lini (type GENERIC) masuk grup "Umum".
+function groupByServiceLine(pipelines) {
+  return [...SERVICE_LINES, 'OTHER']
+    .map((line) => ({ line, meta: serviceLineMeta(line), items: pipelines.filter((p) => (p.serviceLine || 'OTHER') === line) }))
+    .filter((g) => g.items.length > 0)
+}
 
 export default function Deals() {
   const [view, setView] = useState('kanban')
@@ -90,11 +101,20 @@ function DealBoard({ formOpen, setFormOpen }) {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm font-medium text-slate-500">Pipeline:</label>
           <select value={pipeCode} onChange={(e) => setPipeCode(e.target.value)} className={`${inputClass} w-auto`}>
-            {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? ' (default)' : ''}{p.dealCount != null ? ` · ${p.dealCount} deal` : ''}</option>)}
+            {groupByServiceLine(pipelines).map((g) => (
+              <optgroup key={g.line} label={g.meta.label}>
+                {g.items.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? ' (default)' : ''}{p.dealCount != null ? ` · ${p.dealCount} deal` : ''}</option>)}
+              </optgroup>
+            ))}
           </select>
+          {board.pipeline.serviceLine && (
+            <span className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold ${serviceLineMeta(board.pipeline.serviceLine).cls}`}>
+              {serviceLineMeta(board.pipeline.serviceLine).label}
+            </span>
+          )}
         </div>
         <GhostButton onClick={load}><RotateCcw className="h-4 w-4" /> Muat Ulang</GhostButton>
       </div>
@@ -157,7 +177,7 @@ function DealBoard({ formOpen, setFormOpen }) {
 }
 
 // ============================ LIST ============================
-const DEFAULT_QUERY = { search: '', status: 'all', sortBy: 'updated', page: 1, pageSize: 10 }
+const DEFAULT_QUERY = { search: '', status: 'all', serviceLine: 'all', sortBy: 'updated', page: 1, pageSize: 10 }
 
 function DealTable({ formOpen, setFormOpen }) {
   const list = useServerList(crmApi.listDeals, DEFAULT_QUERY)
@@ -174,7 +194,11 @@ function DealTable({ formOpen, setFormOpen }) {
       <SummaryCards cards={cards} />
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-soft lg:flex-row lg:items-center">
         <input value={query.search} onChange={(e) => setQuery({ search: e.target.value })} placeholder="Cari deal…" className={`${inputClass} flex-1`} />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select value={query.serviceLine} onChange={(e) => setQuery({ serviceLine: e.target.value })} className={`${inputClass} w-auto`}>
+            <option value="all">Semua Lini Layanan</option>
+            {SERVICE_LINES.map((l) => <option key={l} value={l}>{serviceLineMeta(l).label}</option>)}
+          </select>
           <select value={query.status} onChange={(e) => setQuery({ status: e.target.value })} className={`${inputClass} w-auto`}>
             <option value="all">Semua Status</option>
             <option value="OPEN">Terbuka</option>
@@ -186,7 +210,7 @@ function DealTable({ formOpen, setFormOpen }) {
       <ErrorBanner message={error} />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-soft">
-        {loading && items.length === 0 ? <LoadingBlock label="Memuat deal…" /> : items.length === 0 && summary.total === 0 && query.status === 'all' && !query.search ? (
+        {loading && items.length === 0 ? <LoadingBlock label="Memuat deal…" /> : items.length === 0 && summary.total === 0 && query.status === 'all' && query.serviceLine === 'all' && !query.search ? (
           <EmptyState icon={Wallet} title="Belum ada deal" description="Buat deal atau konversi lead untuk mengisi pipeline."
             action={<PrimaryButton onClick={() => setFormOpen(true)}><Plus className="h-4 w-4" /> Tambah Deal</PrimaryButton>} />
         ) : (
@@ -197,6 +221,7 @@ function DealTable({ formOpen, setFormOpen }) {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50 text-xs uppercase tracking-wider text-slate-400">
                     <th className="px-5 py-3 font-medium">Deal</th>
+                    <th className="px-5 py-3 font-medium">Lini</th>
                     <th className="px-5 py-3 font-medium">Account</th>
                     <th className="px-5 py-3 font-medium">Stage</th>
                     <th className="px-5 py-3 text-right font-medium">Nilai</th>
@@ -211,6 +236,11 @@ function DealTable({ formOpen, setFormOpen }) {
                         <Link to={`/crm/deals/${d.id}`} className="font-medium text-slate-800 hover:text-brand-600">{d.name}</Link>
                         <p className="font-mono text-[11px] text-slate-400">{d.id}</p>
                       </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${serviceLineMeta(d.serviceLine).cls}`} title={d.pipelineName || ''}>
+                          {serviceLineMeta(d.serviceLine).short}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 text-slate-600">{d.accountName || '—'}</td>
                       <td className="px-5 py-4"><span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{d.stageName} · {d.probability}%</span></td>
                       <td className="px-5 py-4 text-right font-semibold text-slate-800">{formatCurrency(d.amount)}</td>
@@ -218,7 +248,7 @@ function DealTable({ formOpen, setFormOpen }) {
                       <td className="px-5 py-4"><Badge meta={DEAL_STATUS_META[d.status]} /></td>
                     </tr>
                   ))}
-                  {items.length === 0 && <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
+                  {items.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -305,9 +335,13 @@ export function DealFormModal({ open, onClose, onSaved }) {
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Pipeline">
+          <Field label="Pipeline" hint={currentPipeline?.serviceLine ? `Lini ${serviceLineMeta(currentPipeline.serviceLine).label}` : undefined}>
             <select className={inputClass} value={form.pipelineCode} onChange={(e) => { const p = pipelines.find((x) => x.id === e.target.value); set('pipelineCode', e.target.value); set('stageId', p?.stages[0]?.id ?? '') }}>
-              {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? ' (default)' : ''}</option>)}
+              {groupByServiceLine(pipelines).map((g) => (
+                <optgroup key={g.line} label={g.meta.label}>
+                  {g.items.map((p) => <option key={p.id} value={p.id}>{p.name}{p.isDefault ? ' (default)' : ''}</option>)}
+                </optgroup>
+              ))}
             </select>
           </Field>
           <Field label="Stage Awal">

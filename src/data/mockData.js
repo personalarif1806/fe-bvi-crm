@@ -26,6 +26,7 @@ import {
   UsersRound,
   Radar,
   CalendarDays,
+  Workflow,
 } from 'lucide-react'
 
 // Visibilitas menu berbasis peran internal. Aplikasi ini khusus CRM.
@@ -37,6 +38,8 @@ export const navItems = [
   { label: 'Accounts', icon: Building2, to: '/crm/accounts', section: 'Komersial', roles: CRM, badge: null },
   { label: 'Kontak', icon: Contact2, to: '/crm/contacts', section: 'Komersial', roles: CRM, badge: null },
   { label: 'Deals', icon: Handshake, to: '/crm/deals', section: 'Komersial', roles: CRM, badge: null },
+  // Pipeline per lini layanan (lab, training, konsultansi).
+  { label: 'Pipeline', icon: Workflow, to: '/crm/pipelines', section: 'Komersial', roles: CRM, badge: null },
   { label: 'Price Books', icon: Tags, to: '/crm/price-books', section: 'Komersial', roles: CRM, badge: null },
   // Sites & Import Titik disurfacing sebagai modal di dalam Titik Sampling.
   { label: 'Titik Sampling', icon: Radar, to: '/crm/sampling-points', section: 'Kepatuhan', roles: CRM, badge: null },

@@ -147,6 +147,98 @@ export const FEASIBILITY_META = {
   REJECTED: { label: 'Ditolak', cls: 'bg-rose-100 text-rose-700' },
 }
 
+// ============================================================================
+// Lini layanan (service line) — Bumi Ventila menjual pengujian lab, pelatihan,
+// dan konsultansi. Lini diturunkan dari `type` pipeline (lihat backend
+// crm/pipeline.constants.js), tidak disimpan terpisah di Deal.
+// ============================================================================
+export const SERVICE_LINES = ['LAB', 'TRAINING', 'CONSULTING']
+export const SERVICE_LINE_META = {
+  LAB: { label: 'Laboratorium', short: 'Lab', cls: 'bg-brand-100 text-brand-700', bar: 'bg-brand-500', desc: 'Pengujian & sampling terakreditasi ISO/IEC 17025' },
+  TRAINING: { label: 'Training', short: 'Training', cls: 'bg-violet-100 text-violet-700', bar: 'bg-violet-500', desc: 'Pelatihan publik & in-house, sertifikasi kompetensi' },
+  CONSULTING: { label: 'Konsultansi', short: 'Konsultan', cls: 'bg-amber-100 text-amber-700', bar: 'bg-amber-500', desc: 'Dokumen lingkungan & pendampingan sistem manajemen' },
+  OTHER: { label: 'Umum', short: 'Umum', cls: 'bg-slate-100 text-slate-600', bar: 'bg-slate-400', desc: 'Pipeline lintas lini / belum ditentukan' },
+}
+// Fallback aman: pipeline tanpa lini (type GENERIC) tampil sebagai "Umum".
+export function serviceLineMeta(line) {
+  return SERVICE_LINE_META[line] || SERVICE_LINE_META.OTHER
+}
+
+export const PIPELINE_TYPE_META = {
+  GENERIC: { label: 'Umum', serviceLine: null },
+  COMPLIANCE_ACQUISITION: { label: 'Akuisisi Kepatuhan', serviceLine: 'LAB' },
+  COMPLIANCE_RECURRING: { label: 'Rebooking Kepatuhan', serviceLine: 'LAB' },
+  PROJECT: { label: 'Proyek', serviceLine: 'LAB' },
+  SUBCONTRACT: { label: 'Subkontrak', serviceLine: 'LAB' },
+  TRAINING: { label: 'Akuisisi Training', serviceLine: 'TRAINING' },
+  TRAINING_RECURRING: { label: 'Refresher & Re-sertifikasi', serviceLine: 'TRAINING' },
+  CONSULTING: { label: 'Akuisisi Konsultansi', serviceLine: 'CONSULTING' },
+}
+
+// ---- Label checklist kelayakan per lini -------------------------------------
+// Model datanya sama (CrmFeasibilityReview) karena pertanyaannya sejenis —
+// "sanggupkah kita mengerjakan ini?" — hanya istilahnya berbeda per lini.
+// LAB memakai kata-kata asli (ISO 17025 klausul 7.1); jangan diubah.
+const LAB_FEASIBILITY_LABELS = {
+  title: 'Feasibility Gate',
+  caption: '(kaji ulang teknis — ISO 17025 klausul 7.1)',
+  modalSubtitle: 'Kaji ulang kemampuan & sumber daya sebelum penawaran (klausul 7.1).',
+  scopeAccredited: 'Ruang lingkup terakreditasi',
+  capacityAvailable: 'Kapasitas tersedia',
+  samplerAvailable: 'Sampler tersedia',
+  requiresSubcontract: 'Butuh subkontrak',
+  subcontractName: 'Nama Lab Subkontrak',
+  subcontractPlaceholder: 'Lab Mitra Terakreditasi',
+  subcontractLabel: 'Lab subkontrak',
+  consent: 'Pelanggan menyetujui subkontrak (wajib — klausul 6.6 / BR-12)',
+  outOfScope: 'Parameter di luar ruang lingkup',
+  outOfScopeField: 'Parameter di Luar Ruang Lingkup',
+  outOfScopePlaceholder: 'Dioksin;Merkuri',
+  gateHint: 'Gate: butuh Feasibility APPROVED untuk lanjut ke Penawaran',
+}
+
+export const FEASIBILITY_LABELS = {
+  LAB: LAB_FEASIBILITY_LABELS,
+  TRAINING: {
+    title: 'Kaji Ulang Kesiapan',
+    caption: '(kompetensi trainer & ketersediaan jadwal)',
+    modalSubtitle: 'Pastikan trainer berkompeten dan jadwal tersedia sebelum proposal dikirim.',
+    scopeAccredited: 'Materi sesuai kompetensi/lisensi trainer',
+    capacityAvailable: 'Kuota & kelas tersedia',
+    samplerAvailable: 'Trainer tersedia pada jadwal diminta',
+    requiresSubcontract: 'Butuh trainer associate eksternal',
+    subcontractName: 'Nama Trainer / Lembaga Associate',
+    subcontractPlaceholder: 'mis. Lembaga Sertifikasi Mitra',
+    subcontractLabel: 'Associate',
+    consent: 'Pelanggan menyetujui penggunaan trainer associate',
+    outOfScope: 'Topik di luar kompetensi internal',
+    outOfScopeField: 'Topik di Luar Kompetensi Internal',
+    outOfScopePlaceholder: 'Kalibrasi lanjutan;Audit internal',
+    gateHint: 'Gate: butuh kaji ulang kesiapan DISETUJUI untuk lanjut ke Proposal',
+  },
+  CONSULTING: {
+    title: 'Kaji Ulang Kesiapan',
+    caption: '(kualifikasi konsultan & beban tim)',
+    modalSubtitle: 'Pastikan konsultan dengan kualifikasi yang diminta tersedia sebelum proposal dikirim.',
+    scopeAccredited: 'Lingkup sesuai kualifikasi/sertifikasi tim',
+    capacityAvailable: 'Kapasitas man-day tersedia',
+    samplerAvailable: 'Konsultan penanggung jawab tersedia',
+    requiresSubcontract: 'Butuh tenaga ahli eksternal',
+    subcontractName: 'Nama Tenaga Ahli / Mitra',
+    subcontractPlaceholder: 'mis. Ahli AMDAL bersertifikat',
+    subcontractLabel: 'Tenaga ahli eksternal',
+    consent: 'Pelanggan menyetujui penggunaan tenaga ahli eksternal',
+    outOfScope: 'Lingkup di luar kemampuan internal',
+    outOfScopeField: 'Lingkup di Luar Kemampuan Internal',
+    outOfScopePlaceholder: 'Pemodelan dispersi;Kajian risiko kuantitatif',
+    gateHint: 'Gate: butuh kaji ulang kesiapan DISETUJUI untuk lanjut ke Proposal',
+  },
+}
+
+export function feasibilityLabels(serviceLine) {
+  return FEASIBILITY_LABELS[serviceLine] || LAB_FEASIBILITY_LABELS
+}
+
 // ---- Quote & Order (M3) ----
 export const QUOTE_STATUS_META = {
   DRAFT: { label: 'Draft', cls: 'bg-slate-100 text-slate-600' },

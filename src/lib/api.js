@@ -169,7 +169,12 @@ export const crmApi = {
   // Orders
   listOrders: (dealCode) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/orders`, { auth: true }),
   updateOrderStatus: (code, body) => request(`/api/crm/orders/${encodeURIComponent(code)}/status`, { method: 'POST', body, auth: true }),
-  pipelines: () => request('/api/crm/pipelines', { auth: true }),
+
+  // ---- Pipeline (multi-lini: lab, training, konsultansi) ----
+  pipelines: (params) => request(`/api/crm/pipelines${qs(params)}`, { auth: true }),
+  pipelineTemplates: () => request('/api/crm/pipeline-templates', { auth: true }),
+  createPipeline: (body) => request('/api/crm/pipelines', { method: 'POST', body, auth: true }),
+  addPipelineStage: (code, body) => request(`/api/crm/pipelines/${encodeURIComponent(code)}/stages`, { method: 'POST', body, auth: true }),
 
   // Scoring config (Settings)
   scoringConfig: () => request('/api/crm/scoring-config', { auth: true }),

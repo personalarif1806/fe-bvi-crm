@@ -11,6 +11,7 @@ import AccountDuplicates from '../pages/crm/AccountDuplicates.jsx'
 import Contacts from '../pages/crm/Contacts.jsx'
 import Deals from '../pages/crm/Deals.jsx'
 import DealDetail from '../pages/crm/DealDetail.jsx'
+import Pipelines from '../pages/crm/Pipelines.jsx'
 import Activities from '../pages/crm/Activities.jsx'
 import SamplingPoints from '../pages/crm/SamplingPoints.jsx'
 import ComplianceCalendar from '../pages/crm/ComplianceCalendar.jsx'
@@ -107,6 +108,7 @@ export default function AppRoutes() {
             <Route path="/crm/contacts" element={<Contacts />} />
             <Route path="/crm/deals" element={<Deals />} />
             <Route path="/crm/deals/:code" element={<DealDetail />} />
+            <Route path="/crm/pipelines" element={<Pipelines />} />
             <Route path="/crm/quotes/:code" element={<QuoteBuilder />} />
             <Route path="/crm/price-books" element={<PriceBooks />} />
             {/* Sites & Import Titik dikelola sebagai modal di dalam Titik Sampling
