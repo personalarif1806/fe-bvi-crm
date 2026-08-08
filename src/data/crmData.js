@@ -127,6 +127,28 @@ export const DEAL_STATUS_META = {
   LOST: { label: 'Kalah', cls: 'bg-rose-100 text-rose-700' },
 }
 
+// ---- Merek pemilik deal (CrmDeal.brand) ----
+// Sumbu yang sama dengan CrmLead.brand. Menentukan siapa yang memiliki proyek
+// bila deal menang — provisioning portal klien hanya jalan untuk TRINOVATE.
+export const BRANDS = ['BVI', 'TRINOVATE']
+export const BRAND_META = {
+  BVI: { label: 'Bumi Ventila', cls: 'bg-brand-100 text-brand-700' },
+  TRINOVATE: { label: 'Trinovate', cls: 'bg-violet-100 text-violet-700' },
+}
+
+// ---- Jenis jasa konsultansi (CrmDeal.jenisJasa, konsep-portal-klien.md §2 B2) ----
+// Pipeline "Akuisisi Konsultansi" melayani dua jasa yang berbeda; tanpa kolom
+// ini deal dokumen lingkungan yang menang akan melahirkan tracker akreditasi
+// ISO 17025. Server mewajibkannya sejak stage bergerbang kelayakan
+// ("Proposal Teknis & Biaya"), bukan di stage menang.
+export const JENIS_JASA = ['PENDAMPINGAN_AKREDITASI', 'DOKUMEN_LINGKUNGAN', 'SERTIFIKASI', 'LAINNYA']
+export const JENIS_JASA_META = {
+  PENDAMPINGAN_AKREDITASI: { label: 'Pendampingan Akreditasi', cls: 'bg-emerald-100 text-emerald-700', desc: 'ISO/IEC 17025 — satu-satunya jenis yang melahirkan portal klien & tracker' },
+  DOKUMEN_LINGKUNGAN: { label: 'Dokumen Lingkungan', cls: 'bg-sky-100 text-sky-700', desc: 'AMDAL, UKL-UPL, RKL-RPL, pelaporan' },
+  SERTIFIKASI: { label: 'Sertifikasi', cls: 'bg-amber-100 text-amber-700', desc: 'Pendampingan sertifikasi sistem/kompetensi' },
+  LAINNYA: { label: 'Lainnya', cls: 'bg-slate-100 text-slate-600', desc: 'Di luar tiga jenis di atas' },
+}
+
 // ---- Alasan kalah baku (PRD LostReason, US-DL-02) ----
 export const LOST_REASONS = [
   'PRICE', 'TURNAROUND_TIME', 'SCOPE_NOT_ACCREDITED', 'INCUMBENT_COMPETITOR',

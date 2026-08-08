@@ -219,3 +219,11 @@ export const crmApi = {
   complianceDashboard: () => request('/api/crm/compliance/dashboard', { auth: true }),
   generateRecurringDeals: () => request('/api/crm/compliance/generate-recurring', { method: 'POST', auth: true }),
 }
+
+// Portal klien Trinovate (konsep-portal-klien.md §9) — READ-ONLY dari sisi CRM.
+// Token yang dipakai sama: `requireKonsultan` di backend menerima sesi User CRM
+// (peran internal), bukan akun portal. Balasannya { ada: false } bila deal ini
+// belum melahirkan proyek — itu keadaan normal, bukan galat.
+export const portalApi = {
+  dealPanel: (dealCode) => request(`/api/portal/crm/deal/${encodeURIComponent(dealCode)}`, { auth: true }),
+}

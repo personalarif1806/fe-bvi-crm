@@ -9,6 +9,7 @@ import {
 } from '../../components/crm/CrmUI.jsx'
 import {
   DEAL_STATUS_META, CUSTOMER_TYPE_META, SERVICE_LINES, serviceLineMeta,
+  BRANDS, BRAND_META, JENIS_JASA, JENIS_JASA_META,
   formatCompactCurrency, formatCurrency, formatThousands,
 } from '../../data/crmData.js'
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
@@ -159,6 +160,13 @@ function DealBoard({ formOpen, setFormOpen }) {
                           <span className="text-sm font-bold text-slate-900">{formatCompactCurrency(d.amount)}</span>
                           {d.status !== 'OPEN' && <Badge meta={DEAL_STATUS_META[d.status]} />}
                         </div>
+                        {/* Gerbang jenis jasa terlihat sebelum kartu ditarik, bukan
+                            hanya sebagai galat 409 setelahnya. */}
+                        {board.pipeline.serviceLine === 'CONSULTING' && d.status === 'OPEN' && (
+                          d.jenisJasa
+                            ? <p className={`mt-1.5 inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium ${JENIS_JASA_META[d.jenisJasa]?.cls || 'bg-slate-100 text-slate-600'}`}>{JENIS_JASA_META[d.jenisJasa]?.label || d.jenisJasa}</p>
+                            : <Link to={`/crm/deals/${d.id}`} className="mt-1.5 inline-flex rounded bg-rose-50 px-1.5 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-100">Jenis jasa belum diisi</Link>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -265,8 +273,10 @@ function DealTable({ formOpen, setFormOpen }) {
 // ============================ FORM ============================
 const END_CLIENT_SEGMENTS = ['INTERMEDIARY', 'SUBCONTRACT_LAB']
 
+const emptyDeal = { name: '', amount: '', pipelineCode: '', stageId: '', accountId: '', endClientAccountId: '', brand: 'BVI', jenisJasa: '' }
+
 export function DealFormModal({ open, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: '', amount: '', pipelineCode: '', stageId: '', accountId: '', endClientAccountId: '' })
+  const [form, setForm] = useState({ ...emptyDeal })
   const [pipelines, setPipelines] = useState([])
   const [accounts, setAccounts] = useState([])
   const [errors, setErrors] = useState({})
@@ -282,7 +292,7 @@ export function DealFormModal({ open, onClose, onSaved }) {
   const key = open ? 'new' : null
   if (key !== initKey) {
     setInitKey(key)
-    if (open) { setForm({ name: '', amount: '', pipelineCode: '', stageId: '', accountId: '', endClientAccountId: '' }); setErrors({}); setSubmitting(false) }
+    if (open) { setForm({ ...emptyDeal }); setErrors({}); setSubmitting(false) }
   }
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const selectedAccount = accounts.find((a) => a.id === form.accountId)
@@ -299,6 +309,9 @@ export function DealFormModal({ open, onClose, onSaved }) {
   }, [open, pipelines])
 
   const currentPipeline = pipelines.find((p) => p.id === form.pipelineCode)
+  // Jenis jasa hanya bermakna pada lini konsultansi — di situlah satu pipeline
+  // melayani dua jasa yang berbeda, dan di situlah server memasang gerbangnya.
+  const isConsulting = currentPipeline?.serviceLine === 'CONSULTING'
 
   async function submit(e) {
     e.preventDefault()
@@ -311,6 +324,8 @@ export function DealFormModal({ open, onClose, onSaved }) {
       stageId: form.stageId ? Number(form.stageId) : null,
       accountId: form.accountId || null,
       endClientAccountId: form.endClientAccountId || null,
+      brand: form.brand,
+      jenisJasa: isConsulting ? (form.jenisJasa || null) : null,
     }))
     setSubmitting(false)
     if (res.ok) { onSaved(); onClose() } else setErrors(res.fields || { name: res.error })
@@ -350,6 +365,27 @@ export function DealFormModal({ open, onClose, onSaved }) {
             </select>
           </Field>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Merek" hint="pemilik deal" error={errors.brand}>
+            <select className={inputClass} value={form.brand} onChange={(e) => set('brand', e.target.value)}>
+              {BRANDS.map((b) => <option key={b} value={b}>{BRAND_META[b].label}</option>)}
+            </select>
+          </Field>
+          {isConsulting && (
+            <Field label="Jenis Jasa Konsultansi" error={errors.jenisJasa}
+              hint="wajib sebelum stage proposal">
+              <select className={inputClass} value={form.jenisJasa} onChange={(e) => set('jenisJasa', e.target.value)}>
+                <option value="">— Belum ditentukan —</option>
+                {JENIS_JASA.map((j) => <option key={j} value={j}>{JENIS_JASA_META[j].label}</option>)}
+              </select>
+            </Field>
+          )}
+        </div>
+        {isConsulting && form.jenisJasa === 'PENDAMPINGAN_AKREDITASI' && form.brand === 'TRINOVATE' && (
+          <p className="rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-700">
+            Deal ini akan menyiapkan proyek portal klien (tracker akreditasi) sebagai draf begitu stage menang tercapai.
+          </p>
+        )}
         {needsEndClient && (
           <Field label="Klien Akhir (End Client)" required error={errors.endClientAccountId}
             hint={`Wajib untuk segmen ${CUSTOMER_TYPE_META[selectedAccount.customerType]?.label} (BR-03)`}>

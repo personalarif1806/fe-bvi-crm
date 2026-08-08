@@ -268,11 +268,17 @@ function ScorePreview({ preview }) {
 // ============================ MODAL KONVERSI ============================
 export function ConvertModal({ lead, onClose, onDone }) {
   const open = !!lead
-  const [form, setForm] = useState({ accountName: '', npwp: '', createDeal: true, dealName: '', amount: '' })
+  const [form, setForm] = useState({ accountName: '', npwp: '', createDeal: true, dealName: '', amount: '', pipelineCode: '' })
+  const [pipelines, setPipelines] = useState([])
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null)
   const [initKey, setInitKey] = useState(null)
+
+  useEffect(() => {
+    if (!open) return
+    crmApi.pipelines().then((r) => setPipelines(r.data)).catch(() => setPipelines([]))
+  }, [open])
 
   const key = open ? lead.id : null
   if (key !== initKey) {
@@ -280,11 +286,22 @@ export function ConvertModal({ lead, onClose, onDone }) {
     if (open) {
       setForm({
         accountName: lead.company || lead.fullName, npwp: '', createDeal: true,
-        dealName: `${lead.company || lead.fullName} — Deal`, amount: '',
+        dealName: `${lead.company || lead.fullName} — Deal`, amount: '', pipelineCode: '',
       })
       setErrors({}); setSubmitting(false); setResult(null)
     }
   }
+
+  // Pipeline default mengikuti sumber lead, bukan pipeline default global: lead
+  // hasil self-assessment ISO 17025 adalah calon pendampingan akreditasi, jadi
+  // deal-nya masuk papan konsultansi — bukan papan akuisisi lab. Sales tetap
+  // bisa memindahkannya lewat select di bawah.
+  const suggested = pipelines.find((p) => p.type === lead?.suggestedPipelineType) || null
+  useEffect(() => {
+    if (!open || pipelines.length === 0) return
+    setForm((f) => (f.pipelineCode ? f : { ...f, pipelineCode: (suggested || pipelines.find((p) => p.isDefault) || pipelines[0]).id }))
+  }, [open, pipelines, suggested])
+
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
 
   async function submit(e) {
@@ -293,6 +310,7 @@ export function ConvertModal({ lead, onClose, onDone }) {
     const res = await runAction(crmApi.convertLead(lead.id, {
       accountName: form.accountName, npwp: form.npwp || null, createDeal: form.createDeal,
       dealName: form.dealName, amount: Number(form.amount) || 0,
+      pipelineCode: form.pipelineCode || null,
     }))
     setSubmitting(false)
     if (res.ok) { setResult(res.data); onDone?.() } else setErrors(res.fields || { dealName: res.error })
@@ -307,7 +325,7 @@ export function ConvertModal({ lead, onClose, onDone }) {
             <ul className="mt-2 space-y-1 text-xs">
               <li>Account: <span className="font-mono">{result.accountCode}</span> {result.accountCreated ? '(baru)' : '(ditautkan ke golden record)'}</li>
               <li>Kontak: <span className="font-mono">{result.contactCode}</span></li>
-              {result.dealCode && <li>Deal: <span className="font-mono">{result.dealCode}</span></li>}
+              {result.dealCode && <li>Deal: <span className="font-mono">{result.dealCode}</span>{result.pipelineName ? ` — pipeline ${result.pipelineName}` : ''}</li>}
             </ul>
           </div>
           <div className="flex justify-end"><button onClick={onClose} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Selesai</button></div>
@@ -327,6 +345,16 @@ export function ConvertModal({ lead, onClose, onDone }) {
           {form.createDeal && (
             <>
               <Field label="Nama Deal" required error={errors.dealName}><input className={inputClass} value={form.dealName} onChange={(e) => set('dealName', e.target.value)} /></Field>
+              <Field
+                label="Pipeline"
+                error={errors.pipelineCode}
+                hint={suggested && form.pipelineCode === suggested.id ? `Disarankan dari sumber lead "${lead.source}"` : undefined}
+              >
+                <select className={inputClass} value={form.pipelineCode} onChange={(e) => set('pipelineCode', e.target.value)}>
+                  {pipelines.length === 0 && <option value="">Memuat pipeline…</option>}
+                  {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </Field>
               <Field label="Nilai Deal (IDR)" error={errors.amount}>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">Rp</span>

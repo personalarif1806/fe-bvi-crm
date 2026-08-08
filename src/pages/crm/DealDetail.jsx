@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink } from 'lucide-react'
-import { crmApi, orderApi } from '../../lib/api.js'
+import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink, KeyRound, Mail, Copy, Check as CheckIcon, Clock, LogIn } from 'lucide-react'
+import { crmApi, orderApi, portalApi } from '../../lib/api.js'
 import { runAction } from '../../lib/useServerList.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import Modal, { Field, inputClass } from '../../components/Modal.jsx'
@@ -10,6 +10,7 @@ import { ActivityTimeline, ActivityFormModal } from '../../components/crm/Activi
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
 import {
   DEAL_STATUS_META, FEASIBILITY_META, LOST_REASON_LABEL, feasibilityLabels, serviceLineMeta,
+  BRANDS, BRAND_META, JENIS_JASA, JENIS_JASA_META,
   formatCurrency, formatDateTime,
 } from '../../data/crmData.js'
 
@@ -79,6 +80,8 @@ export default function DealDetail() {
                 {deal.accountId && <Link to={`/crm/accounts/${deal.accountId}`} className="inline-flex items-center gap-1 hover:text-brand-600"><Building2 className="h-3.5 w-3.5" /> {deal.accountName}</Link>}
                 {deal.endClientAccountId && <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600"><Lock className="h-3 w-3" /> Klien akhir: {deal.endClientAccountId}</span>}
                 <span className={`inline-flex items-center rounded px-1.5 py-0.5 font-medium ${serviceLineMeta(deal.serviceLine).cls}`}>{serviceLineMeta(deal.serviceLine).label}</span>
+                {deal.brand && <span className={`inline-flex items-center rounded px-1.5 py-0.5 font-medium ${BRAND_META[deal.brand]?.cls || 'bg-slate-100 text-slate-600'}`}>{BRAND_META[deal.brand]?.label || deal.brand}</span>}
+                {deal.jenisJasa && <span className={`inline-flex items-center rounded px-1.5 py-0.5 font-medium ${JENIS_JASA_META[deal.jenisJasa]?.cls || 'bg-slate-100 text-slate-600'}`}>{JENIS_JASA_META[deal.jenisJasa]?.label || deal.jenisJasa}</span>}
                 <span>Pipeline: {deal.pipelineName}</span>
                 <span>Pemilik: {deal.ownerName}</span>
               </div>
@@ -103,6 +106,10 @@ export default function DealDetail() {
           )}
         </div>
       </div>
+
+      <KlasifikasiPanel deal={deal} onChanged={load} setError={setError} />
+
+      <PortalKlienPanel deal={deal} />
 
       <FeasibilityPanel deal={deal} canApprove={canApprove} onOpen={() => setFeasOpen(true)} onChanged={load} setError={setError} />
 
@@ -149,6 +156,263 @@ export default function DealDetail() {
       <LostReasonModal open={lostPrompt != null} onClose={() => setLostPrompt(null)} onConfirm={(reason, note) => { const s = lostPrompt; setLostPrompt(null); move(s, reason, note) }} />
       <FeasibilityFormModal open={feasOpen} onClose={() => setFeasOpen(false)} deal={deal} onSaved={load} />
     </CrmPage>
+  )
+}
+
+// ---- Panel Klasifikasi & Provisioning (konsep-portal-klien.md §2, B1 & B2) ----
+// Dua kolom yang menentukan siapa pemilik deal dan jasa apa yang dijual. Keduanya
+// disunting di sini, bukan di modal terpisah: `jenisJasa` adalah gerbang stage
+// pada lini konsultansi, jadi sales harus bisa mengisinya tepat saat tertahan.
+// Terkunci setelah deal menang/kalah — mengubahnya di sana tidak menarik ulang
+// keputusan provisioning yang sudah diambil.
+function KlasifikasiPanel({ deal, onChanged, setError }) {
+  const [busy, setBusy] = useState(false)
+  const isConsulting = deal.serviceLine === 'CONSULTING'
+  const locked = deal.status !== 'OPEN'
+  const perluJenisJasa = isConsulting && !deal.jenisJasa
+
+  async function save(patch) {
+    setBusy(true)
+    const res = await runAction(crmApi.updateDeal(deal.id, patch))
+    setBusy(false)
+    if (res.ok) { setError(''); onChanged() } else setError(res.error)
+  }
+
+  const akanProvisioning = deal.brand === 'TRINOVATE' && deal.jenisJasa === 'PENDAMPINGAN_AKREDITASI'
+
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+        <UserCog className="h-4 w-4 text-slate-400" /> Klasifikasi Deal
+        <span className="text-xs font-normal text-slate-400">(merek & jenis jasa — penentu provisioning portal klien)</span>
+      </h3>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Merek" hint="pemilik deal">
+          <select className={inputClass} value={deal.brand || 'BVI'} disabled={locked || busy}
+            onChange={(e) => save({ brand: e.target.value })}>
+            {BRANDS.map((b) => <option key={b} value={b}>{BRAND_META[b].label}</option>)}
+          </select>
+        </Field>
+        {isConsulting && (
+          <Field label="Jenis Jasa Konsultansi" hint="wajib sebelum stage proposal">
+            <select className={`${inputClass} ${perluJenisJasa ? 'border-rose-300 bg-rose-50/40' : ''}`}
+              value={deal.jenisJasa || ''} disabled={locked || busy}
+              onChange={(e) => save({ jenisJasa: e.target.value || null })}>
+              <option value="">— Belum ditentukan —</option>
+              {JENIS_JASA.map((j) => <option key={j} value={j}>{JENIS_JASA_META[j].label}</option>)}
+            </select>
+          </Field>
+        )}
+      </div>
+
+      {isConsulting && deal.jenisJasa && (
+        <p className="mt-2 text-xs text-slate-500">{JENIS_JASA_META[deal.jenisJasa]?.desc}</p>
+      )}
+      {perluJenisJasa && !locked && (
+        <p className="mt-3 flex items-start gap-1.5 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          Pipeline konsultansi melayani lebih dari satu jasa. Pilih jenis jasa lebih dulu — tanpa itu deal tidak bisa masuk stage proposal ke atas.
+        </p>
+      )}
+      {akanProvisioning && (
+        <p className="mt-3 flex items-start gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          Saat deal menang, sistem menyiapkan proyek portal klien sebagai <span className="font-medium">draf</span> + tugas CRM untuk ditinjau. Undangan tidak terkirim otomatis.
+        </p>
+      )}
+      {locked && <p className="mt-3 text-xs text-slate-400">Deal sudah {DEAL_STATUS_META[deal.status]?.label.toLowerCase()} — klasifikasi terkunci.</p>}
+    </div>
+  )
+}
+
+// ---- Panel Portal Klien (konsep-portal-klien.md §9) ----
+// Hanya untuk deal konsultansi yang sudah menang: di luar itu proyek portal
+// memang tidak pernah lahir, dan panel kosong hanya jadi kebisingan.
+//
+// Read-only, dan akan tetap begitu. Yang ditampilkan adalah nama pengguna
+// (email) dan keadaan undangannya — bukan kata sandi: kolomnya bcrypt dan tidak
+// pernah diketahui siapa pun di TSI (P5). Klien menetapkannya sendiri lewat
+// tautan sekali pakai; kalau tautan itu hangus, jalan masuknya "Lupa sandi",
+// bukan CRM.
+const AKUN_STATUS_META = {
+  DIUNDANG: { label: 'Diundang', cls: 'bg-amber-100 text-amber-700' },
+  AKTIF: { label: 'Aktif', cls: 'bg-emerald-100 text-emerald-700' },
+  NONAKTIF: { label: 'Nonaktif', cls: 'bg-slate-100 text-slate-500' },
+}
+const PROYEK_STATUS_META = {
+  DRAFT: { label: 'Draf — belum diaktifkan', cls: 'bg-amber-100 text-amber-700' },
+  AKTIF: { label: 'Aktif', cls: 'bg-emerald-100 text-emerald-700' },
+  SELESAI: { label: 'Selesai', cls: 'bg-sky-100 text-sky-700' },
+  DIBATALKAN: { label: 'Dibatalkan', cls: 'bg-rose-100 text-rose-700' },
+}
+
+function Salin({ nilai, label }) {
+  const [ok, setOk] = useState(false)
+  return (
+    <button type="button" title={`Salin ${label}`}
+      onClick={() => { navigator.clipboard?.writeText(nilai).then(() => { setOk(true); setTimeout(() => setOk(false), 1500) }).catch(() => {}) }}
+      className="inline-flex items-center rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
+      {ok ? <CheckIcon className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
+  )
+}
+
+function PortalKlienPanel({ deal }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [gagal, setGagal] = useState('')
+  const relevan = deal.serviceLine === 'CONSULTING' && deal.status === 'WON'
+
+  useEffect(() => {
+    if (!relevan) { setData(null); return }
+    setLoading(true)
+    portalApi.dealPanel(deal.id)
+      .then(setData)
+      .catch((e) => setGagal(e.message))
+      .finally(() => setLoading(false))
+  }, [relevan, deal.id])
+
+  if (!relevan) return null
+
+  // Deal menang tapi tidak melahirkan proyek: hampir selalu karena satu dari
+  // syarat gate §2 tidak terpenuhi. Sebutkan yang mana — tanpa ini konsultan
+  // hanya melihat ketiadaan dan menduga sistemnya rusak.
+  if (data && !data.ada) {
+    const kurang = []
+    if (deal.brand !== 'TRINOVATE') kurang.push('merek deal bukan Trinovate')
+    if (deal.jenisJasa !== 'PENDAMPINGAN_AKREDITASI') kurang.push('jenis jasa bukan Pendampingan Akreditasi')
+    if (!deal.accountId) kurang.push('deal belum tertaut ke Account')
+    return (
+      <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><KeyRound className="h-4 w-4 text-slate-400" /> Portal Klien</h3>
+        <p className="mt-2 text-sm text-slate-500">
+          Deal ini menang tapi tidak melahirkan proyek portal.
+          {kurang.length > 0
+            ? <> Syarat yang belum terpenuhi: <span className="font-medium text-slate-700">{kurang.join(', ')}</span>. Perbaiki di panel Klasifikasi Deal, lalu pindahkan deal keluar dan kembali ke stage menang.</>
+            : ' Semua syarat terlihat terpenuhi — periksa log server pada saat perpindahan stage.'}
+        </p>
+      </div>
+    )
+  }
+
+  if (loading && !data) return <div className="rounded-2xl border border-slate-200/70 bg-white shadow-soft"><LoadingBlock label="Memuat portal klien…" /></div>
+  if (gagal) return <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft"><h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><KeyRound className="h-4 w-4 text-slate-400" /> Portal Klien</h3><p className="mt-2 text-sm text-rose-600">{gagal}</p></div>
+  if (!data?.ada) return null
+
+  const { proyek, ringkasan, akses, tautanUrl } = data
+  const draft = proyek.status === 'DRAFT'
+  const akun = akses?.akun || []
+
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
+          <KeyRound className="h-4 w-4 text-slate-400" /> Portal Klien
+          <span className="font-mono text-xs font-normal text-slate-400">{proyek.id}</span>
+        </h3>
+        <div className="flex items-center gap-2">
+          <Badge meta={PROYEK_STATUS_META[proyek.status] || { label: proyek.status, cls: 'bg-slate-100 text-slate-600' }} />
+          {tautanUrl && (
+            <a href={tautanUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700">
+              Buka di portal <ExternalLink className="h-3.5 w-3.5" />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {draft ? (
+        <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+          <p className="font-medium">Akun klien belum dibuat.</p>
+          <p className="mt-1">
+            Deal menang hanya membuat proyek berstatus draf dan satu tugas CRM. Akun dan undangan
+            baru terbit saat konsultan menekan <span className="font-medium">"Aktifkan &amp; kirim undangan"</span> di
+            portal — di situlah penerima, hasil assessment yang diimpor, dan ruang lingkup awal ditinjau lebih dulu.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: 'Gap Closure', nilai: ringkasan.gcr == null ? '—' : `${ringkasan.gcr}%` },
+              { label: 'Progres Langkah', nilai: `${ringkasan.langkah.no}/${ringkasan.langkah.total}` },
+              { label: 'Antre Review', nilai: ringkasan.antreanReview },
+              { label: 'Diaktifkan', nilai: proyek.diaktifkanPada ? formatDateTime(proyek.diaktifkanPada) : '—' },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
+                <p className="text-[11px] text-slate-400">{s.label}</p>
+                <p className="text-sm font-semibold text-slate-800">{s.nilai}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Akses login klien</p>
+              {akses?.masukUrl && (
+                <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                  <LogIn className="h-3.5 w-3.5" /> {akses.masukUrl}
+                  <Salin nilai={akses.masukUrl} label="alamat halaman masuk" />
+                </span>
+              )}
+            </div>
+
+            {akun.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-400">Belum ada akun yang tertaut ke proyek ini.</p>
+            ) : (
+              <div className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100">
+                {akun.map((a) => (
+                  <div key={a.email} className="flex flex-wrap items-start justify-between gap-3 px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="flex flex-wrap items-center gap-1.5 text-sm font-medium text-slate-800">
+                        {a.nama}
+                        {a.jabatan && <span className="text-xs font-normal text-slate-400">· {a.jabatan}</span>}
+                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+                          {a.peran === 'KLIEN_ADMIN' ? 'Admin lab' : 'Anggota'}
+                        </span>
+                      </p>
+                      <p className="mt-0.5 inline-flex items-center gap-1 font-mono text-xs text-slate-500">
+                        <Mail className="h-3.5 w-3.5 text-slate-300" /> {a.email}
+                        <Salin nilai={a.email} label="email" />
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        {a.terakhirLogin ? `Terakhir masuk ${formatDateTime(a.terakhirLogin)}` : 'Belum pernah masuk'}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <Badge meta={AKUN_STATUS_META[a.status] || { label: a.status, cls: 'bg-slate-100 text-slate-600' }} />
+                      {a.undangan && (
+                        <p className={`mt-1 inline-flex items-center gap-1 text-[11px] ${a.undangan.hangus ? 'text-rose-600' : 'text-slate-400'}`}>
+                          <Clock className="h-3 w-3" />
+                          {a.undangan.dipakaiPada
+                            ? `Undangan ditebus ${formatDateTime(a.undangan.dipakaiPada)}`
+                            : a.undangan.hangus
+                              ? `Undangan hangus ${formatDateTime(a.undangan.kedaluwarsa)}`
+                              : `Undangan berlaku s/d ${formatDateTime(a.undangan.kedaluwarsa)}`}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-400">
+              Nama pengguna adalah email di atas. <span className="font-medium text-slate-500">Kata sandi tidak pernah dibuat atau disimpan oleh TSI</span> —
+              klien menetapkannya sendiri lewat tautan undangan sekali pakai (berlaku 7 hari). Bila undangan
+              sudah hangus atau sandi lupa, arahkan klien ke "Lupa sandi" di halaman masuk; akun berstatus
+              Diundang pun tetap dilayani.
+            </p>
+          </div>
+        </>
+      )}
+
+      {data.catatanInternal && (
+        <p className="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          <span className="font-medium text-slate-600">Catatan internal:</span> {data.catatanInternal}
+        </p>
+      )}
+    </div>
   )
 }
 
