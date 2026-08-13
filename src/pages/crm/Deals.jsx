@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, RotateCcw, LayoutGrid, List, Wallet, TrendingUp, Layers, GripVertical } from 'lucide-react'
+import { Plus, RotateCcw, LayoutGrid, List, Wallet, TrendingUp, Layers, GripVertical, Trash2 } from 'lucide-react'
 import { crmApi } from '../../lib/api.js'
 import { useServerList, runAction } from '../../lib/useServerList.js'
-import Modal, { Field, inputClass } from '../../components/Modal.jsx'
+import Modal, { ConfirmDialog, Field, inputClass } from '../../components/Modal.jsx'
 import {
   CrmPage, PageHeader, SummaryCards, ErrorBanner, TableFooter, LoadingBlock, EmptyState, Badge, PrimaryButton, GhostButton,
 } from '../../components/crm/CrmUI.jsx'
@@ -191,6 +191,22 @@ function DealTable({ formOpen, setFormOpen }) {
   const list = useServerList(crmApi.listDeals, DEFAULT_QUERY)
   const { items, summary, loading, error, query, setQuery, refresh } = list
 
+  const [toDelete, setToDelete] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
+
+  /**
+   * Penghapusan bisa ditolak server (deal yang sudah melahirkan portal klien
+   * aktif — lihat `deleteDeal()`). Alasannya ditampilkan apa adanya: pesannya
+   * memuat kode proyek dan jalan keluar yang benar, dan itu justru yang perlu
+   * dibaca. Menggantinya dengan "gagal menghapus" membuang seluruh gunanya.
+   */
+  async function remove() {
+    if (!toDelete) return
+    const res = await runAction(crmApi.removeDeal(toDelete.id))
+    setDeleteError(res.ok ? '' : res.error)
+    if (res.ok) refresh()
+  }
+
   const cards = [
     { label: 'Total Deal', value: summary.total ?? 0, icon: Layers, accent: 'text-brand-600', bg: 'bg-brand-50' },
     { label: 'Nilai Kotor', value: formatCompactCurrency(summary.gross ?? 0), icon: Wallet, accent: 'text-emerald-600', bg: 'bg-emerald-50' },
@@ -216,6 +232,7 @@ function DealTable({ formOpen, setFormOpen }) {
         </div>
       </div>
       <ErrorBanner message={error} />
+      <ErrorBanner message={deleteError} />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-soft">
         {loading && items.length === 0 ? <LoadingBlock label="Memuat deal…" /> : items.length === 0 && summary.total === 0 && query.status === 'all' && query.serviceLine === 'all' && !query.search ? (
@@ -235,6 +252,7 @@ function DealTable({ formOpen, setFormOpen }) {
                     <th className="px-5 py-3 text-right font-medium">Nilai</th>
                     <th className="px-5 py-3 text-right font-medium">Tertimbang</th>
                     <th className="px-5 py-3 font-medium">Status</th>
+                    <th className="px-5 py-3 text-right font-medium">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -254,9 +272,12 @@ function DealTable({ formOpen, setFormOpen }) {
                       <td className="px-5 py-4 text-right font-semibold text-slate-800">{formatCurrency(d.amount)}</td>
                       <td className="px-5 py-4 text-right text-slate-500">{formatCurrency(d.weighted)}</td>
                       <td className="px-5 py-4"><Badge meta={DEAL_STATUS_META[d.status]} /></td>
+                      <td className="px-5 py-4 text-right">
+                        <button onClick={() => { setDeleteError(''); setToDelete(d) }} title="Hapus" className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+                      </td>
                     </tr>
                   ))}
-                  {items.length === 0 && <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
+                  {items.length === 0 && <tr><td colSpan={8} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -266,6 +287,15 @@ function DealTable({ formOpen, setFormOpen }) {
       </div>
 
       <DealFormModal open={formOpen} onClose={() => setFormOpen(false)} onSaved={refresh} />
+
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={remove}
+        title="Hapus Deal"
+        message={`Hapus deal "${toDelete?.name}" (${toDelete?.id})? Deal hilang dari pipeline dan seluruh laporan nilai; penawaran, order, dan aktivitas yang tertaut tetap ada. Riwayat penghapusan tercatat di audit.`}
+        confirmLabel="Hapus Deal"
+      />
     </>
   )
 }

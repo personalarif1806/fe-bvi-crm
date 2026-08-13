@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink, KeyRound, Mail, Copy, Check as CheckIcon, Clock, LogIn } from 'lucide-react'
+import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink, KeyRound, Mail, Copy, Check as CheckIcon, Clock, LogIn, Trash2 } from 'lucide-react'
 import { crmApi, orderApi, portalApi } from '../../lib/api.js'
 import { runAction } from '../../lib/useServerList.js'
 import { useAuth } from '../../context/AuthContext.jsx'
-import Modal, { Field, inputClass } from '../../components/Modal.jsx'
+import Modal, { ConfirmDialog, Field, inputClass } from '../../components/Modal.jsx'
 import { CrmPage, ErrorBanner, LoadingBlock, Badge, PrimaryButton, GhostButton } from '../../components/crm/CrmUI.jsx'
 import { ActivityTimeline, ActivityFormModal } from '../../components/crm/ActivityTimeline.jsx'
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
@@ -25,6 +25,7 @@ export default function DealDetail() {
   const [activityOpen, setActivityOpen] = useState(false)
   const [lostPrompt, setLostPrompt] = useState(null)
   const [feasOpen, setFeasOpen] = useState(false)
+  const [toDelete, setToDelete] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -57,12 +58,28 @@ export default function DealDetail() {
     load()
   }
 
+  /**
+   * Server bisa menolak — deal yang sudah melahirkan portal klien aktif tidak
+   * boleh dihapus (`deleteDeal()`). Pesannya menyebut kode proyek dan jalan
+   * keluarnya, jadi ditampilkan apa adanya di banner, bukan diringkas.
+   */
+  async function remove() {
+    const res = await runAction(crmApi.removeDeal(code))
+    if (res.ok) navigate('/crm/deals')
+    else setError(res.error)
+  }
+
   if (loading && !deal) return <CrmPage><div className="rounded-2xl border border-slate-200/70 bg-white shadow-soft"><LoadingBlock label="Memuat deal…" /></div></CrmPage>
   if (!deal) return <CrmPage><ErrorBanner message={error || 'Deal tidak ditemukan.'} /><Link to="/crm/deals" className="text-sm text-brand-600">← Kembali ke Deals</Link></CrmPage>
 
   return (
     <CrmPage>
       <Link to="/crm/deals" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700"><ArrowLeft className="h-4 w-4" /> Deals</Link>
+
+      {/* `setError()` dipanggil dari perpindahan stage dan penghapusan, tetapi
+          sebelumnya hanya dirender pada cabang "deal tidak ditemukan" — galat
+          409 (gerbang jenis jasa, portal klien aktif) tenggelam tanpa jejak. */}
+      <ErrorBanner message={error} />
 
       {/* Header */}
       <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
@@ -104,6 +121,10 @@ export default function DealDetail() {
           {deal.stageRequiresFeasibility === false && stages.some((s) => s.requiresFeasibility) && !['APPROVED', 'APPROVED_WITH_SUBCONTRACT'].includes(deal.feasibilityStatus) && (
             <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs text-amber-700"><ShieldAlert className="h-3.5 w-3.5" /> {feasibilityLabels(deal.serviceLine).gateHint}</span>
           )}
+
+          <div className="ml-auto">
+            <GhostButton onClick={() => setToDelete(true)}><Trash2 className="h-4 w-4" /> Hapus</GhostButton>
+          </div>
         </div>
       </div>
 
@@ -155,6 +176,21 @@ export default function DealDetail() {
       <ActivityFormModal open={activityOpen} onClose={() => setActivityOpen(false)} preset={{ relatedType: 'deal', relatedCode: deal.id, label: `Untuk ${deal.name}` }} onSaved={load} />
       <LostReasonModal open={lostPrompt != null} onClose={() => setLostPrompt(null)} onConfirm={(reason, note) => { const s = lostPrompt; setLostPrompt(null); move(s, reason, note) }} />
       <FeasibilityFormModal open={feasOpen} onClose={() => setFeasOpen(false)} deal={deal} onSaved={load} />
+
+      <ConfirmDialog
+        open={toDelete}
+        onClose={() => setToDelete(false)}
+        onConfirm={remove}
+        title="Hapus Deal"
+        message={
+          `Hapus deal "${deal.name}" (${deal.id})? Deal hilang dari pipeline dan seluruh laporan nilai; ` +
+          'penawaran, order, dan aktivitas yang tertaut tetap ada. Riwayat penghapusan tercatat di audit. ' +
+          (deal.status === 'WON'
+            ? 'Deal ini berstatus MENANG — pastikan penghapusan memang koreksi administratif, bukan pembatalan pekerjaan. Untuk membatalkan, pindahkan ke stage kalah.'
+            : '')
+        }
+        confirmLabel="Hapus Deal"
+      />
     </CrmPage>
   )
 }
