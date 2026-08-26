@@ -13,6 +13,7 @@ import {
   formatCompactCurrency, formatCurrency, formatThousands,
 } from '../../data/crmData.js'
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
+import AccountCombobox from '../../components/crm/AccountCombobox.jsx'
 
 // Kelompokkan pipeline per lini layanan untuk <optgroup> di selector.
 // Pipeline tanpa lini (type GENERIC) masuk grup "Umum".
@@ -246,6 +247,7 @@ function DealTable({ formOpen, setFormOpen }) {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/50 text-xs uppercase tracking-wider text-slate-400">
                     <th className="px-5 py-3 font-medium">Deal</th>
+                    <th className="px-5 py-3 font-medium">Merek</th>
                     <th className="px-5 py-3 font-medium">Lini</th>
                     <th className="px-5 py-3 font-medium">Account</th>
                     <th className="px-5 py-3 font-medium">Stage</th>
@@ -263,6 +265,11 @@ function DealTable({ formOpen, setFormOpen }) {
                         <p className="font-mono text-[11px] text-slate-400">{d.id}</p>
                       </td>
                       <td className="px-5 py-4">
+                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${BRAND_META[d.brand]?.cls || 'bg-slate-100 text-slate-600'}`}>
+                          {BRAND_META[d.brand]?.label || d.brand || '—'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
                         <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${serviceLineMeta(d.serviceLine).cls}`} title={d.pipelineName || ''}>
                           {serviceLineMeta(d.serviceLine).short}
                         </span>
@@ -277,7 +284,7 @@ function DealTable({ formOpen, setFormOpen }) {
                       </td>
                     </tr>
                   ))}
-                  {items.length === 0 && <tr><td colSpan={8} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
+                  {items.length === 0 && <tr><td colSpan={9} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -303,12 +310,14 @@ function DealTable({ formOpen, setFormOpen }) {
 // ============================ FORM ============================
 const END_CLIENT_SEGMENTS = ['INTERMEDIARY', 'SUBCONTRACT_LAB']
 
-const emptyDeal = { name: '', amount: '', pipelineCode: '', stageId: '', accountId: '', endClientAccountId: '', brand: 'BVI', jenisJasa: '' }
+// `account` & `endClient` menyimpan objek account utuh, bukan id: AccountCombobox
+// mengambil hasil per pencarian, jadi account terpilih belum tentu ada di daftar
+// yang sedang tampil — padahal `customerType`-nya menentukan gerbang BR-03.
+const emptyDeal = { name: '', amount: '', pipelineCode: '', stageId: '', account: null, endClient: null, brand: 'BVI', jenisJasa: '' }
 
 export function DealFormModal({ open, onClose, onSaved }) {
   const [form, setForm] = useState({ ...emptyDeal })
   const [pipelines, setPipelines] = useState([])
-  const [accounts, setAccounts] = useState([])
   const [errors, setErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
   const [initKey, setInitKey] = useState(null)
@@ -316,7 +325,6 @@ export function DealFormModal({ open, onClose, onSaved }) {
   useEffect(() => {
     if (!open) return
     crmApi.pipelines().then((r) => setPipelines(r.data)).catch(() => setPipelines([]))
-    crmApi.listAccounts({ pageSize: 100, sortBy: 'name' }).then((r) => setAccounts(r.data)).catch(() => setAccounts([]))
   }, [open])
 
   const key = open ? 'new' : null
@@ -325,7 +333,7 @@ export function DealFormModal({ open, onClose, onSaved }) {
     if (open) { setForm({ ...emptyDeal }); setErrors({}); setSubmitting(false) }
   }
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
-  const selectedAccount = accounts.find((a) => a.id === form.accountId)
+  const selectedAccount = form.account
   const needsEndClient = END_CLIENT_SEGMENTS.includes(selectedAccount?.customerType)
 
   // Default pipeline & reset stage saat pipeline berubah.
@@ -352,8 +360,8 @@ export function DealFormModal({ open, onClose, onSaved }) {
       amount: Number(form.amount) || 0,
       pipelineCode: form.pipelineCode || null,
       stageId: form.stageId ? Number(form.stageId) : null,
-      accountId: form.accountId || null,
-      endClientAccountId: form.endClientAccountId || null,
+      accountId: form.account?.id || null,
+      endClientAccountId: form.endClient?.id || null,
       brand: form.brand,
       jenisJasa: isConsulting ? (form.jenisJasa || null) : null,
     }))
@@ -373,10 +381,15 @@ export function DealFormModal({ open, onClose, onSaved }) {
             </div>
           </Field>
           <Field label="Account">
-            <select className={inputClass} value={form.accountId} onChange={(e) => set('accountId', e.target.value)}>
-              <option value="">— Tanpa Account —</option>
-              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            <AccountCombobox
+              value={form.account}
+              onChange={(a) => setForm((f) => ({
+                ...f,
+                account: a,
+                // Klien akhir tidak boleh sama dengan account-nya sendiri.
+                endClient: f.endClient?.id === a?.id ? null : f.endClient,
+              }))}
+            />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
@@ -419,10 +432,14 @@ export function DealFormModal({ open, onClose, onSaved }) {
         {needsEndClient && (
           <Field label="Klien Akhir (End Client)" required error={errors.endClientAccountId}
             hint={`Wajib untuk segmen ${CUSTOMER_TYPE_META[selectedAccount.customerType]?.label} (BR-03)`}>
-            <select className={inputClass} value={form.endClientAccountId} onChange={(e) => set('endClientAccountId', e.target.value)}>
-              <option value="">— Pilih klien akhir —</option>
-              {accounts.filter((a) => a.id !== form.accountId).map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+            <AccountCombobox
+              value={form.endClient}
+              onChange={(a) => set('endClient', a)}
+              excludeId={form.account?.id}
+              emptyLabel=""
+              placeholder="Ketik nama klien akhir…"
+              invalid={Boolean(errors.endClientAccountId)}
+            />
           </Field>
         )}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">

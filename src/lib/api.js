@@ -166,6 +166,11 @@ export const crmApi = {
   decideQuote: (code, body) => request(`/api/crm/quotes/${encodeURIComponent(code)}/decide`, { method: 'POST', body, auth: true }),
   reviseQuote: (code) => request(`/api/crm/quotes/${encodeURIComponent(code)}/revise`, { method: 'POST', auth: true }),
   convertQuote: (code, body) => request(`/api/crm/quotes/${encodeURIComponent(code)}/convert`, { method: 'POST', body, auth: true }),
+  // Penawaran unggahan (PDF disusun di luar sistem) — daftarnya juga ikut di getDeal.
+  listQuoteFiles: (dealCode) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/quote-files`, { auth: true }),
+  uploadQuoteFile: (dealCode, body) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/quote-files`, { method: 'POST', body, auth: true }),
+  getQuoteFile: (dealCode, id) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/quote-files/${encodeURIComponent(id)}`, { auth: true }),
+  removeQuoteFile: (dealCode, id) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/quote-files/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
   // Orders
   listOrders: (dealCode) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/orders`, { auth: true }),
   updateOrderStatus: (code, body) => request(`/api/crm/orders/${encodeURIComponent(code)}/status`, { method: 'POST', body, auth: true }),

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink, KeyRound, Mail, Copy, Check as CheckIcon, Clock, LogIn, Trash2 } from 'lucide-react'
+import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink, KeyRound, Mail, Copy, Check as CheckIcon, Clock, LogIn, Trash2, UploadCloud, Download, Eye, AlertTriangle } from 'lucide-react'
 import { crmApi, orderApi, portalApi } from '../../lib/api.js'
 import { runAction } from '../../lib/useServerList.js'
 import { useAuth } from '../../context/AuthContext.jsx'
@@ -11,7 +11,7 @@ import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
 import {
   DEAL_STATUS_META, FEASIBILITY_META, LOST_REASON_LABEL, feasibilityLabels, serviceLineMeta,
   BRANDS, BRAND_META, JENIS_JASA, JENIS_JASA_META,
-  formatCurrency, formatDateTime,
+  formatCurrency, formatDate, formatDateTime, formatThousands,
 } from '../../data/crmData.js'
 
 export default function DealDetail() {
@@ -134,7 +134,7 @@ export default function DealDetail() {
 
       <FeasibilityPanel deal={deal} canApprove={canApprove} onOpen={() => setFeasOpen(true)} onChanged={load} setError={setError} />
 
-      <OrderPenawaranPanel deal={deal} onChanged={load} setError={setError} />
+      <PenawaranPanel deal={deal} onChanged={load} setError={setError} />
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Activities */}
@@ -513,7 +513,21 @@ function FeasibilityPanel({ deal, canApprove, onOpen, onChanged, setError }) {
   )
 }
 
-// ---- Panel Penawaran via Order Management (tautan Deal ↔ Order) ----
+// ============================================================================
+// Panel Penawaran — dua jalur yang sengaja hidup berdampingan.
+//
+// 1. Order Management: penawaran lab disusun di QuotationBuilder, nomornya
+//    terbit berurutan, barisnya terhubung ke katalog, konversinya ke kontrak
+//    otomatis. Ini jalur utama untuk pengujian.
+// 2. Unggah PDF: penawaran yang disusun di luar sistem. Order lab mewajibkan
+//    permintaan uji & estimasi sampel — kolom yang tidak berlaku untuk
+//    penawaran training, sertifikasi, atau pendampingan akreditasi Trinovate.
+//    Tanpa jalur ini dokumen yang benar-benar dikirim ke pelanggan hanya ada di
+//    email, dan deal-nya tidak bisa menjawab "penawarannya mana".
+//
+// Keduanya ditaruh dalam satu panel, bukan dua: yang dicari orang adalah
+// "penawaran deal ini", bukan "penawaran yang kebetulan dibuat lewat order".
+// ============================================================================
 const ORDER_CATEGORY_BY_SEGMENT = {
   COMPLIANCE_OWNER: 'Industri', INTERMEDIARY: 'Konsultan', SUBCONTRACT_LAB: 'Laboratorium',
   GOVERNMENT: 'Lainnya', AD_HOC: 'Personal',
@@ -521,11 +535,13 @@ const ORDER_CATEGORY_BY_SEGMENT = {
 
 function prettyStatus(s) { return String(s || '').replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) }
 
-function OrderPenawaranPanel({ deal, onChanged, setError }) {
+function PenawaranPanel({ deal, onChanged, setError }) {
   const navigate = useNavigate()
   const [createOpen, setCreateOpen] = useState(false)
   const [linkOpen, setLinkOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
   const order = deal.order
+  const berkas = deal.quoteFiles || []
 
   async function unlink() {
     const res = await runAction(crmApi.unlinkDealOrder(deal.id))
@@ -534,51 +550,317 @@ function OrderPenawaranPanel({ deal, onChanged, setError }) {
 
   return (
     <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><FileText className="h-4 w-4 text-slate-400" /> Penawaran (Order Management)</h3>
-        {!order && (
-          <div className="flex gap-2">
-            <GhostButton onClick={() => setLinkOpen(true)}><Link2 className="h-4 w-4" /> Tautkan Order</GhostButton>
-            <PrimaryButton onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> Buat Penawaran</PrimaryButton>
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><FileText className="h-4 w-4 text-slate-400" /> Penawaran</h3>
+
+      <div className="mt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Dokumen Terunggah (PDF)</h4>
+          <GhostButton onClick={() => setUploadOpen(true)}><UploadCloud className="h-4 w-4" /> Unggah PDF</GhostButton>
+        </div>
+        <BerkasPenawaranList deal={deal} berkas={berkas} onChanged={onChanged} setError={setError} onUpload={() => setUploadOpen(true)} />
+      </div>
+
+      <div className="mt-5 border-t border-slate-100 pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Via Order Management</h4>
+          {!order && (
+            <div className="flex gap-2">
+              <GhostButton onClick={() => setLinkOpen(true)}><Link2 className="h-4 w-4" /> Tautkan Order</GhostButton>
+              <PrimaryButton onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> Buat Penawaran</PrimaryButton>
+            </div>
+          )}
+        </div>
+
+        {!order ? (
+          <p className="mt-3 rounded-xl border border-dashed border-slate-200 py-5 text-center text-sm text-slate-400">
+            Belum ada Order tertaut. Buat Order baru (data pelanggan terisi otomatis) lalu susun penawaran di Order Management, atau tautkan Order yang sudah ada.
+          </p>
+        ) : (
+          <div className="mt-3 rounded-xl border border-slate-100 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-brand-500" />
+                <span className="font-mono text-sm font-semibold text-slate-700">{order.code}</span>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{prettyStatus(order.status)}</span>
+              </div>
+              <button onClick={unlink} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600"><Unlink className="h-3.5 w-3.5" /> Lepas tautan</button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+              <span>Pelanggan: {order.customerName}</span>
+              {order.quotation ? (
+                <>
+                  <span>Penawaran: <span className="font-semibold text-slate-700">{order.quotation.isDraft ? '(draft)' : order.quotation.number}</span></span>
+                  <span>Grand total: <span className="font-semibold text-slate-800">{formatCurrency(order.quotation.grandTotal)}</span></span>
+                </>
+              ) : <span className="text-amber-600">Belum ada penawaran tersusun.</span>}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+              <PrimaryButton onClick={() => navigate(`/orders/${order.code}/quotation`)}><FileText className="h-4 w-4" /> {order.quotation ? 'Buka / Sunting Penawaran' : 'Susun Penawaran'}</PrimaryButton>
+              <GhostButton onClick={() => navigate(`/orders/${order.code}`)}><ExternalLink className="h-4 w-4" /> Lihat Order</GhostButton>
+            </div>
           </div>
         )}
       </div>
-
-      {!order ? (
-        <p className="mt-3 rounded-xl border border-dashed border-slate-200 py-5 text-center text-sm text-slate-400">
-          Belum ada penawaran. Buat Order baru (data pelanggan terisi otomatis) lalu susun penawaran di Order Management, atau tautkan Order yang sudah ada.
-        </p>
-      ) : (
-        <div className="mt-3 rounded-xl border border-slate-100 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4 text-brand-500" />
-              <span className="font-mono text-sm font-semibold text-slate-700">{order.code}</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">{prettyStatus(order.status)}</span>
-            </div>
-            <button onClick={unlink} className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600"><Unlink className="h-3.5 w-3.5" /> Lepas tautan</button>
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-            <span>Pelanggan: {order.customerName}</span>
-            {order.quotation ? (
-              <>
-                <span>Penawaran: <span className="font-semibold text-slate-700">{order.quotation.isDraft ? '(draft)' : order.quotation.number}</span></span>
-                <span>Grand total: <span className="font-semibold text-slate-800">{formatCurrency(order.quotation.grandTotal)}</span></span>
-              </>
-            ) : <span className="text-amber-600">Belum ada penawaran tersusun.</span>}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-            <PrimaryButton onClick={() => navigate(`/orders/${order.code}/quotation`)}><FileText className="h-4 w-4" /> {order.quotation ? 'Buka / Sunting Penawaran' : 'Susun Penawaran'}</PrimaryButton>
-            <GhostButton onClick={() => navigate(`/orders/${order.code}`)}><ExternalLink className="h-4 w-4" /> Lihat Order</GhostButton>
-          </div>
-        </div>
-      )}
 
       <CreateOrderModal open={createOpen} onClose={() => setCreateOpen(false)} deal={deal}
         onCreated={(orderCode) => { setCreateOpen(false); navigate(`/orders/${orderCode}/quotation`) }} setError={setError} />
       <LinkOrderModal open={linkOpen} onClose={() => setLinkOpen(false)} dealCode={deal.id}
         onLinked={() => { setLinkOpen(false); onChanged() }} setError={setError} />
+      <UploadPenawaranModal open={uploadOpen} onClose={() => setUploadOpen(false)} dealCode={deal.id}
+        onUploaded={() => { setUploadOpen(false); onChanged() }} />
     </div>
+  )
+}
+
+// ---- Berkas penawaran yang diunggah (PDF) ----
+// Batas ini disamakan dengan MAX_FILE_BYTES di backend (quoteFiles.service.js).
+// Menolak di sini menghemat unggahan 20 MB yang pasti ditolak server; server
+// tetap memeriksa ulang karena batas di klien bukan batas.
+const MAX_PDF_BYTES = 10 * 1024 * 1024
+
+function formatBytes(n) {
+  const b = Number(n) || 0
+  if (b < 1024) return `${b} B`
+  if (b < 1024 * 1024) return `${Math.round(b / 1024)} KB`
+  return `${(b / 1024 / 1024).toFixed(1)} MB`
+}
+
+// data:…;base64 → Blob. PDF dibuka lewat blob URL, bukan data URL: Chrome
+// memblokir navigasi tab ke data: URL, jadi "Lihat" akan gagal diam-diam.
+function blobDariDataUrl(dataUrl) {
+  const koma = dataUrl.indexOf(',')
+  const mime = dataUrl.slice(5, dataUrl.indexOf(';'))
+  const bin = atob(dataUrl.slice(koma + 1))
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
+}
+
+function BerkasPenawaranList({ deal, berkas, onChanged, setError, onUpload }) {
+  const [sibuk, setSibuk] = useState('')
+  const [toDelete, setToDelete] = useState(null)
+
+  async function ambilUrl(f) {
+    const res = await crmApi.getQuoteFile(deal.id, f.id)
+    const url = URL.createObjectURL(blobDariDataUrl(res.dataUrl))
+    // Tab yang baru dibuka masih memegang URL ini; jangan cabut seketika.
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+    return url
+  }
+
+  async function lihat(f) {
+    // Tab dibuka SEBELUM await — dibuka setelahnya akan dianggap popup dan
+    // diblokir browser.
+    const tab = window.open('', '_blank', 'noopener')
+    setSibuk(f.id)
+    try {
+      const url = await ambilUrl(f)
+      if (tab) tab.location = url
+      else unduhUrl(url, f.fileName) // popup diblokir → jatuh ke unduh
+      setError('')
+    } catch (err) {
+      tab?.close()
+      setError(err.message)
+    } finally { setSibuk('') }
+  }
+
+  function unduhUrl(url, fileName) {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = fileName
+    a.click()
+  }
+
+  async function unduh(f) {
+    setSibuk(f.id)
+    try { unduhUrl(await ambilUrl(f), f.fileName); setError('') }
+    catch (err) { setError(err.message) }
+    finally { setSibuk('') }
+  }
+
+  async function hapus() {
+    if (!toDelete) return
+    const res = await runAction(crmApi.removeQuoteFile(deal.id, toDelete.id))
+    if (res.ok) { setError(''); onChanged() } else setError(res.error)
+  }
+
+  if (berkas.length === 0) {
+    return (
+      <button type="button" onClick={onUpload}
+        className="mt-3 flex w-full flex-col items-center gap-1 rounded-xl border border-dashed border-slate-200 py-5 text-center transition hover:border-brand-300 hover:bg-brand-50/40">
+        <UploadCloud className="h-5 w-5 text-slate-300" />
+        <span className="text-sm text-slate-400">Belum ada dokumen penawaran diunggah.</span>
+        <span className="text-xs text-slate-400">Klik untuk mengunggah PDF penawaran yang disusun di luar sistem.</span>
+      </button>
+    )
+  }
+
+  return (
+    <>
+      <ul className="mt-3 space-y-2">
+        {berkas.map((f) => (
+          <li key={f.id} className="rounded-xl border border-slate-100 p-3">
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-rose-50 text-rose-600"><FileText className="h-4 w-4" /></div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-800">{f.number || f.fileName}</p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
+                  {f.number && <span className="truncate text-slate-400">{f.fileName}</span>}
+                  {f.amount != null && <span className="font-semibold text-slate-700">{formatCurrency(f.amount)}</span>}
+                  {f.validUntil && <span>Berlaku s.d. {formatDate(f.validUntil)}</span>}
+                  <span className="text-slate-400">{formatBytes(f.sizeBytes)}</span>
+                  <span className="text-slate-400">Diunggah {f.uploadedBy} · {formatDateTime(f.uploadedAt)}</span>
+                </div>
+                {f.note && <p className="mt-1.5 text-xs text-slate-600">{f.note}</p>}
+              </div>
+              <div className="flex flex-none items-center gap-1">
+                <button onClick={() => lihat(f)} disabled={sibuk === f.id} title="Lihat PDF"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-brand-600 disabled:opacity-50"><Eye className="h-4 w-4" /></button>
+                <button onClick={() => unduh(f)} disabled={sibuk === f.id} title="Unduh"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-brand-600 disabled:opacity-50"><Download className="h-4 w-4" /></button>
+                <button onClick={() => setToDelete(f)} title="Hapus"
+                  className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+
+      <ConfirmDialog
+        open={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={hapus}
+        title="Hapus Berkas Penawaran"
+        message={`Hapus "${toDelete?.fileName}"${toDelete?.number ? ` (No. ${toDelete.number})` : ''} dari deal ini? Berkasnya ikut terhapus dan tidak bisa dipulihkan; penghapusan tercatat di audit deal.`}
+        confirmLabel="Hapus Berkas"
+      />
+    </>
+  )
+}
+
+// Modal unggah penawaran PDF. Metadata opsional — yang wajib hanya berkasnya:
+// nomor & nilai sering belum final saat dokumen pertama diunggah, dan
+// mewajibkannya hanya melahirkan "-" dan "0" yang tidak bisa dipercaya.
+const emptyUnggah = { number: '', amount: '', validUntil: '', note: '' }
+
+function UploadPenawaranModal({ open, onClose, dealCode, onUploaded }) {
+  const [form, setForm] = useState({ ...emptyUnggah })
+  const [file, setFile] = useState(null)
+  const [dragOver, setDragOver] = useState(false)
+  const [errors, setErrors] = useState({})
+  const [submitting, setSubmitting] = useState(false)
+  const [initOpen, setInitOpen] = useState(false)
+  const inputRef = useRef(null)
+
+  if (open !== initOpen) {
+    setInitOpen(open)
+    if (open) { setForm({ ...emptyUnggah }); setFile(null); setErrors({}); setSubmitting(false); setDragOver(false) }
+  }
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
+
+  function pilihFile(f) {
+    if (!f) return
+    const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+    if (!pdf) { setErrors({ dataUrl: 'Hanya berkas PDF yang diterima.' }); setFile(null); return }
+    if (f.size > MAX_PDF_BYTES) { setErrors({ dataUrl: `Ukuran ${formatBytes(f.size)} melebihi batas ${MAX_PDF_BYTES / 1024 / 1024} MB.` }); setFile(null); return }
+    setErrors({})
+    setFile(f)
+  }
+
+  function bacaDataUrl(f) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(new Error('Berkas gagal dibaca.'))
+      reader.readAsDataURL(f)
+    })
+  }
+
+  async function submit(e) {
+    e.preventDefault()
+    if (!file) { setErrors({ dataUrl: 'Pilih berkas PDF penawaran.' }); return }
+    setSubmitting(true)
+    let dataUrl
+    try { dataUrl = await bacaDataUrl(file) }
+    catch (err) { setSubmitting(false); setErrors({ dataUrl: err.message }); return }
+    const res = await runAction(crmApi.uploadQuoteFile(dealCode, {
+      dataUrl,
+      fileName: file.name,
+      number: form.number.trim() || null,
+      amount: form.amount === '' ? null : Number(form.amount),
+      validUntil: form.validUntil || null,
+      note: form.note.trim() || null,
+    }))
+    setSubmitting(false)
+    if (res.ok) onUploaded(); else setErrors(res.fields || { dataUrl: res.error })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Unggah Penawaran (PDF)"
+      subtitle="Untuk penawaran yang disusun di luar sistem — training, sertifikasi, pendampingan, atau dokumen yang sudah terlanjur dibuat sendiri."
+      maxWidth="max-w-lg">
+      <form onSubmit={submit} className="space-y-4">
+        <Field label="Berkas Penawaran" required error={errors.dataUrl}>
+          {file ? (
+            <div className="flex items-center gap-3 rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+              <div className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-white text-rose-600"><FileText className="h-5 w-5" /></div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-800">{file.name}</p>
+                <p className="text-xs text-slate-400">{formatBytes(file.size)}</p>
+              </div>
+              <button type="button" onClick={() => setFile(null)} title="Ganti berkas"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); pilihFile(e.dataTransfer.files?.[0]) }}
+              className={`flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition ${
+                dragOver ? 'border-brand-400 bg-brand-50' : 'border-slate-300 bg-slate-50/50 hover:border-brand-300 hover:bg-brand-50/40'
+              }`}
+            >
+              <UploadCloud className={`h-7 w-7 ${dragOver ? 'text-brand-600' : 'text-slate-400'}`} />
+              <span className="text-sm font-medium text-slate-600">Tarik & lepas PDF di sini, atau klik untuk pilih</span>
+              <span className="text-xs text-slate-400">PDF saja · maks {MAX_PDF_BYTES / 1024 / 1024} MB</span>
+            </button>
+          )}
+          <input ref={inputRef} type="file" hidden accept="application/pdf,.pdf"
+            onChange={(e) => { pilihFile(e.target.files?.[0]); e.target.value = '' }} />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Nomor Penawaran" hint="opsional — sesuai dokumen" error={errors.number}>
+            <input className={inputClass} value={form.number} onChange={(e) => set('number', e.target.value)} placeholder="mis. 014/PNW-TSI/VIII/2026" />
+          </Field>
+          <Field label="Nilai Penawaran" hint="opsional" error={errors.amount}>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">Rp</span>
+              <input type="text" inputMode="numeric" className={`${inputClass} pl-9`} value={formatThousands(form.amount)}
+                onChange={(e) => set('amount', e.target.value.replace(/\D/g, ''))} placeholder="0" />
+            </div>
+          </Field>
+        </div>
+        <Field label="Berlaku Sampai" hint="opsional" error={errors.validUntil}>
+          <input type="date" className={inputClass} value={form.validUntil} onChange={(e) => set('validUntil', e.target.value)} />
+        </Field>
+        <Field label="Catatan" hint="mis. revisi ke-2, sudah termasuk biaya perjalanan" error={errors.note}>
+          <textarea className={inputClass} rows={2} value={form.note} onChange={(e) => set('note', e.target.value)} />
+        </Field>
+
+        <p className="flex items-start gap-1.5 rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-none" />
+          Berkas ini tidak mengubah nilai deal. Perbarui nilai deal secara terpisah bila penawaran yang dikirim berbeda.
+        </p>
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Batal</button>
+          <PrimaryButton type="submit" disabled={submitting}>{submitting ? 'Mengunggah…' : 'Unggah Penawaran'}</PrimaryButton>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
