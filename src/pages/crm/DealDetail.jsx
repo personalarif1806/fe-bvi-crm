@@ -3,6 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Wallet, Plus, History, TrendingUp, Building2, ShieldCheck, ShieldAlert, Lock, UserCog, FileText, Package, Send, CheckCircle2, RefreshCw, Link2, ExternalLink, Search, Unlink, KeyRound, Mail, Copy, Check as CheckIcon, Clock, LogIn, Trash2, UploadCloud, Download, Eye, AlertTriangle } from 'lucide-react'
 import { crmApi, orderApi, portalApi } from '../../lib/api.js'
 import { runAction } from '../../lib/useServerList.js'
+import { objectUrlSementara, unduhUrl } from '../../lib/berkas.js'
 import { useAuth } from '../../context/AuthContext.jsx'
 import Modal, { ConfirmDialog, Field, inputClass } from '../../components/Modal.jsx'
 import { CrmPage, ErrorBanner, LoadingBlock, Badge, PrimaryButton, GhostButton } from '../../components/crm/CrmUI.jsx'
@@ -625,27 +626,13 @@ function formatBytes(n) {
   return `${(b / 1024 / 1024).toFixed(1)} MB`
 }
 
-// data:…;base64 → Blob. PDF dibuka lewat blob URL, bukan data URL: Chrome
-// memblokir navigasi tab ke data: URL, jadi "Lihat" akan gagal diam-diam.
-function blobDariDataUrl(dataUrl) {
-  const koma = dataUrl.indexOf(',')
-  const mime = dataUrl.slice(5, dataUrl.indexOf(';'))
-  const bin = atob(dataUrl.slice(koma + 1))
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i)
-  return new Blob([bytes], { type: mime })
-}
-
 function BerkasPenawaranList({ deal, berkas, onChanged, setError, onUpload }) {
   const [sibuk, setSibuk] = useState('')
   const [toDelete, setToDelete] = useState(null)
 
   async function ambilUrl(f) {
     const res = await crmApi.getQuoteFile(deal.id, f.id)
-    const url = URL.createObjectURL(blobDariDataUrl(res.dataUrl))
-    // Tab yang baru dibuka masih memegang URL ini; jangan cabut seketika.
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
-    return url
+    return objectUrlSementara(res.dataUrl)
   }
 
   async function lihat(f) {
@@ -662,13 +649,6 @@ function BerkasPenawaranList({ deal, berkas, onChanged, setError, onUpload }) {
       tab?.close()
       setError(err.message)
     } finally { setSibuk('') }
-  }
-
-  function unduhUrl(url, fileName) {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileName
-    a.click()
   }
 
   async function unduh(f) {

@@ -173,6 +173,10 @@ export const crmApi = {
   removeQuoteFile: (dealCode, id) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/quote-files/${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }),
   // Orders
   listOrders: (dealCode) => request(`/api/crm/deals/${encodeURIComponent(dealCode)}/orders`, { auth: true }),
+  // Dokumen penawaran Order Management siap cetak ({ html }) — dirender backend
+  // (satu sumber dengan yang dicetak dari aplikasi Order Management).
+  orderQuotationDocument: (orderCode) =>
+    request(`/api/orders/${encodeURIComponent(orderCode)}/quotation/document`, { auth: true }),
   updateOrderStatus: (code, body) => request(`/api/crm/orders/${encodeURIComponent(code)}/status`, { method: 'POST', body, auth: true }),
 
   // ---- Pipeline (multi-lini: lab, training, konsultansi) ----

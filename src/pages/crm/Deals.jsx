@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, RotateCcw, LayoutGrid, List, Wallet, TrendingUp, Layers, GripVertical, Trash2 } from 'lucide-react'
+import { Plus, RotateCcw, LayoutGrid, List, Wallet, TrendingUp, Layers, GripVertical, Trash2, Download, Printer, FileText } from 'lucide-react'
 import { crmApi } from '../../lib/api.js'
 import { useServerList, runAction } from '../../lib/useServerList.js'
+import { objectUrlSementara, unduhUrl } from '../../lib/berkas.js'
+import { printOrderQuotation } from '../../lib/quotationPrint.js'
 import Modal, { ConfirmDialog, Field, inputClass } from '../../components/Modal.jsx'
 import {
   CrmPage, PageHeader, SummaryCards, ErrorBanner, TableFooter, LoadingBlock, EmptyState, Badge, PrimaryButton, GhostButton,
@@ -185,6 +187,75 @@ function DealBoard({ formOpen, setFormOpen }) {
   )
 }
 
+// ---- Kolom Penawaran ----
+// Dua jalur penawaran sebuah deal berdampingan di satu kolom (lihat
+// PenawaranPanel di DealDetail): dokumen Order Management yang disusun di
+// QuotationBuilder, dan PDF yang diunggah karena disusun di luar sistem.
+// Keduanya bisa dibuka/diunduh langsung dari daftar tanpa membuka deal.
+//
+// Dokumen order dirender backend lalu ditulis ke tab baru (Cetak / Simpan PDF);
+// berkas unggahan diunduh apa adanya. Isi berkas TIDAK ikut di daftar — hanya
+// metadata — jadi PDF-nya baru ditarik saat tombolnya ditekan.
+const MAX_BERKAS_CHIP = 2
+
+const chipClass =
+  'inline-flex max-w-[11rem] items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50'
+
+function PenawaranCell({ deal, setError }) {
+  const [sibuk, setSibuk] = useState('')
+  const berkas = deal.quoteFiles || []
+  const quotation = deal.orderQuotation
+
+  if (!quotation && berkas.length === 0) return <span className="text-slate-300">—</span>
+
+  async function cetakOrder() {
+    setSibuk('order')
+    // Tab dibuka di dalam printOrderQuotation SEBELUM await-nya; galat
+    // dikembalikan sebagai pesan, bukan dilempar.
+    setError(await printOrderQuotation(quotation.orderCode))
+    setSibuk('')
+  }
+
+  async function unduhBerkas(f) {
+    setSibuk(f.id)
+    try {
+      const res = await crmApi.getQuoteFile(deal.id, f.id)
+      unduhUrl(objectUrlSementara(res.dataUrl), f.fileName)
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setSibuk('')
+    }
+  }
+
+  const sisa = berkas.length - MAX_BERKAS_CHIP
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {quotation && (
+        <button type="button" onClick={cetakOrder} disabled={sibuk === 'order'} className={chipClass}
+          title={`Penawaran Order Management ${quotation.orderCode} — buka & simpan PDF`}>
+          <Printer className="h-3 w-3 shrink-0" />
+          <span className="truncate">{quotation.isDraft ? 'Draft penawaran' : quotation.number}</span>
+        </button>
+      )}
+      {berkas.slice(0, MAX_BERKAS_CHIP).map((f) => (
+        <button key={f.id} type="button" onClick={() => unduhBerkas(f)} disabled={sibuk === f.id} className={chipClass}
+          title={`Unduh ${f.fileName}`}>
+          <Download className="h-3 w-3 shrink-0" />
+          <span className="truncate">{f.number || f.fileName}</span>
+        </button>
+      ))}
+      {sisa > 0 && (
+        <Link to={`/crm/deals/${deal.id}`} className={chipClass} title="Lihat semua penawaran deal ini">
+          <FileText className="h-3 w-3 shrink-0" /> +{sisa}
+        </Link>
+      )}
+    </div>
+  )
+}
+
 // ============================ LIST ============================
 const DEFAULT_QUERY = { search: '', status: 'all', serviceLine: 'all', sortBy: 'updated', page: 1, pageSize: 10 }
 
@@ -193,7 +264,8 @@ function DealTable({ formOpen, setFormOpen }) {
   const { items, summary, loading, error, query, setQuery, refresh } = list
 
   const [toDelete, setToDelete] = useState(null)
-  const [deleteError, setDeleteError] = useState('')
+  // Galat aksi per baris (hapus deal, unduh penawaran) — satu banner di atas tabel.
+  const [rowError, setRowError] = useState('')
 
   /**
    * Penghapusan bisa ditolak server (deal yang sudah melahirkan portal klien
@@ -204,7 +276,7 @@ function DealTable({ formOpen, setFormOpen }) {
   async function remove() {
     if (!toDelete) return
     const res = await runAction(crmApi.removeDeal(toDelete.id))
-    setDeleteError(res.ok ? '' : res.error)
+    setRowError(res.ok ? '' : res.error)
     if (res.ok) refresh()
   }
 
@@ -233,7 +305,7 @@ function DealTable({ formOpen, setFormOpen }) {
         </div>
       </div>
       <ErrorBanner message={error} />
-      <ErrorBanner message={deleteError} />
+      <ErrorBanner message={rowError} />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-soft">
         {loading && items.length === 0 ? <LoadingBlock label="Memuat deal…" /> : items.length === 0 && summary.total === 0 && query.status === 'all' && query.serviceLine === 'all' && !query.search ? (
@@ -254,6 +326,7 @@ function DealTable({ formOpen, setFormOpen }) {
                     <th className="px-5 py-3 text-right font-medium">Nilai</th>
                     <th className="px-5 py-3 text-right font-medium">Tertimbang</th>
                     <th className="px-5 py-3 font-medium">Status</th>
+                    <th className="px-5 py-3 font-medium">Penawaran</th>
                     <th className="px-5 py-3 text-right font-medium">Aksi</th>
                   </tr>
                 </thead>
@@ -279,12 +352,13 @@ function DealTable({ formOpen, setFormOpen }) {
                       <td className="px-5 py-4 text-right font-semibold text-slate-800">{formatCurrency(d.amount)}</td>
                       <td className="px-5 py-4 text-right text-slate-500">{formatCurrency(d.weighted)}</td>
                       <td className="px-5 py-4"><Badge meta={DEAL_STATUS_META[d.status]} /></td>
+                      <td className="px-5 py-4"><PenawaranCell deal={d} setError={setRowError} /></td>
                       <td className="px-5 py-4 text-right">
-                        <button onClick={() => { setDeleteError(''); setToDelete(d) }} title="Hapus" className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => { setRowError(''); setToDelete(d) }} title="Hapus" className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
                       </td>
                     </tr>
                   ))}
-                  {items.length === 0 && <tr><td colSpan={9} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
+                  {items.length === 0 && <tr><td colSpan={10} className="px-5 py-12 text-center text-sm text-slate-400">Tidak ada deal yang cocok.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -308,11 +382,12 @@ function DealTable({ formOpen, setFormOpen }) {
 }
 
 // ============================ FORM ============================
+// Segmen B & C: field klien akhir ditampilkan (relevan), tapi pengisiannya opsional.
 const END_CLIENT_SEGMENTS = ['INTERMEDIARY', 'SUBCONTRACT_LAB']
 
 // `account` & `endClient` menyimpan objek account utuh, bukan id: AccountCombobox
 // mengambil hasil per pencarian, jadi account terpilih belum tentu ada di daftar
-// yang sedang tampil — padahal `customerType`-nya menentukan gerbang BR-03.
+// yang sedang tampil — padahal `customerType`-nya menentukan tampil/tidaknya field klien akhir.
 const emptyDeal = { name: '', amount: '', pipelineCode: '', stageId: '', account: null, endClient: null, brand: 'BVI', jenisJasa: '' }
 
 export function DealFormModal({ open, onClose, onSaved }) {
@@ -334,7 +409,7 @@ export function DealFormModal({ open, onClose, onSaved }) {
   }
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }))
   const selectedAccount = form.account
-  const needsEndClient = END_CLIENT_SEGMENTS.includes(selectedAccount?.customerType)
+  const showEndClient = END_CLIENT_SEGMENTS.includes(selectedAccount?.customerType)
 
   // Default pipeline & reset stage saat pipeline berubah.
   useEffect(() => {
@@ -429,9 +504,9 @@ export function DealFormModal({ open, onClose, onSaved }) {
             Deal ini akan menyiapkan proyek portal klien (tracker akreditasi) sebagai draf begitu stage menang tercapai.
           </p>
         )}
-        {needsEndClient && (
-          <Field label="Klien Akhir (End Client)" required error={errors.endClientAccountId}
-            hint={`Wajib untuk segmen ${CUSTOMER_TYPE_META[selectedAccount.customerType]?.label} (BR-03)`}>
+        {showEndClient && (
+          <Field label="Klien Akhir (End Client)" error={errors.endClientAccountId}
+            hint={`Opsional — isi bila klien akhir segmen ${CUSTOMER_TYPE_META[selectedAccount.customerType]?.label} sudah diketahui`}>
             <AccountCombobox
               value={form.endClient}
               onChange={(a) => set('endClient', a)}
