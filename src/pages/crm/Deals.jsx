@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, RotateCcw, LayoutGrid, List, Wallet, TrendingUp, Layers, GripVertical, Trash2, Download, Printer, FileText } from 'lucide-react'
+import { Plus, RotateCcw, LayoutGrid, List, Wallet, TrendingUp, Layers, GripVertical, Trash2, Eye, FileText } from 'lucide-react'
 import { crmApi } from '../../lib/api.js'
 import { useServerList, runAction } from '../../lib/useServerList.js'
-import { objectUrlSementara, unduhUrl } from '../../lib/berkas.js'
-import { printOrderQuotation } from '../../lib/quotationPrint.js'
 import Modal, { ConfirmDialog, Field, inputClass } from '../../components/Modal.jsx'
 import {
   CrmPage, PageHeader, SummaryCards, ErrorBanner, TableFooter, LoadingBlock, EmptyState, Badge, PrimaryButton, GhostButton,
@@ -15,6 +13,7 @@ import {
   formatCompactCurrency, formatCurrency, formatThousands,
 } from '../../data/crmData.js'
 import LostReasonModal from '../../components/crm/LostReasonModal.jsx'
+import DokumenPenawaranModal from '../../components/crm/DokumenPenawaranModal.jsx'
 import AccountCombobox from '../../components/crm/AccountCombobox.jsx'
 
 // Kelompokkan pipeline per lini layanan untuk <optgroup> di selector.
@@ -191,59 +190,53 @@ function DealBoard({ formOpen, setFormOpen }) {
 // Dua jalur penawaran sebuah deal berdampingan di satu kolom (lihat
 // PenawaranPanel di DealDetail): dokumen Order Management yang disusun di
 // QuotationBuilder, dan PDF yang diunggah karena disusun di luar sistem.
-// Keduanya bisa dibuka/diunduh langsung dari daftar tanpa membuka deal.
+// Keduanya dibuka sebagai pratinjau di dalam aplikasi — bukan langsung diunduh
+// atau dilempar ke tab baru — supaya isinya bisa dipastikan dulu; tombol unduh
+// (atau Cetak / Simpan PDF untuk dokumen order) ada di dalam pratinjaunya.
 //
-// Dokumen order dirender backend lalu ditulis ke tab baru (Cetak / Simpan PDF);
-// berkas unggahan diunduh apa adanya. Isi berkas TIDAK ikut di daftar — hanya
-// metadata — jadi PDF-nya baru ditarik saat tombolnya ditekan.
+// Isi berkas TIDAK ikut di daftar — hanya metadata — jadi dokumennya baru
+// ditarik saat chip-nya ditekan, oleh modal pratinjau.
 const MAX_BERKAS_CHIP = 2
 
 const chipClass =
   'inline-flex max-w-[11rem] items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50'
 
-function PenawaranCell({ deal, setError }) {
-  const [sibuk, setSibuk] = useState('')
+function PenawaranCell({ deal }) {
+  const [dokumen, setDokumen] = useState(null)
   const berkas = deal.quoteFiles || []
   const quotation = deal.orderQuotation
 
   if (!quotation && berkas.length === 0) return <span className="text-slate-300">—</span>
-
-  async function cetakOrder() {
-    setSibuk('order')
-    // Tab dibuka di dalam printOrderQuotation SEBELUM await-nya; galat
-    // dikembalikan sebagai pesan, bukan dilempar.
-    setError(await printOrderQuotation(quotation.orderCode))
-    setSibuk('')
-  }
-
-  async function unduhBerkas(f) {
-    setSibuk(f.id)
-    try {
-      const res = await crmApi.getQuoteFile(deal.id, f.id)
-      unduhUrl(objectUrlSementara(res.dataUrl), f.fileName)
-      setError('')
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setSibuk('')
-    }
-  }
 
   const sisa = berkas.length - MAX_BERKAS_CHIP
 
   return (
     <div className="flex flex-wrap items-center gap-1">
       {quotation && (
-        <button type="button" onClick={cetakOrder} disabled={sibuk === 'order'} className={chipClass}
-          title={`Penawaran Order Management ${quotation.orderCode} — buka & simpan PDF`}>
-          <Printer className="h-3 w-3 shrink-0" />
+        <button type="button" className={chipClass}
+          onClick={() => setDokumen({
+            jenis: 'order',
+            orderCode: quotation.orderCode,
+            judul: quotation.isDraft ? 'Draft Penawaran' : `Penawaran ${quotation.number}`,
+            subjudul: `Order Management · ${quotation.orderCode}`,
+          })}
+          title={`Penawaran Order Management ${quotation.orderCode} — lihat pratinjau`}>
+          <Eye className="h-3 w-3 shrink-0" />
           <span className="truncate">{quotation.isDraft ? 'Draft penawaran' : quotation.number}</span>
         </button>
       )}
       {berkas.slice(0, MAX_BERKAS_CHIP).map((f) => (
-        <button key={f.id} type="button" onClick={() => unduhBerkas(f)} disabled={sibuk === f.id} className={chipClass}
-          title={`Unduh ${f.fileName}`}>
-          <Download className="h-3 w-3 shrink-0" />
+        <button key={f.id} type="button" className={chipClass}
+          onClick={() => setDokumen({
+            jenis: 'berkas',
+            dealCode: deal.id,
+            fileId: f.id,
+            fileName: f.fileName,
+            judul: f.number ? `Penawaran ${f.number}` : f.fileName,
+            subjudul: f.number ? f.fileName : 'Dokumen penawaran unggahan',
+          })}
+          title={`Lihat ${f.fileName}`}>
+          <Eye className="h-3 w-3 shrink-0" />
           <span className="truncate">{f.number || f.fileName}</span>
         </button>
       ))}
@@ -252,6 +245,8 @@ function PenawaranCell({ deal, setError }) {
           <FileText className="h-3 w-3 shrink-0" /> +{sisa}
         </Link>
       )}
+
+      <DokumenPenawaranModal open={!!dokumen} dokumen={dokumen} onClose={() => setDokumen(null)} />
     </div>
   )
 }
@@ -264,7 +259,7 @@ function DealTable({ formOpen, setFormOpen }) {
   const { items, summary, loading, error, query, setQuery, refresh } = list
 
   const [toDelete, setToDelete] = useState(null)
-  // Galat aksi per baris (hapus deal, unduh penawaran) — satu banner di atas tabel.
+  // Galat aksi per baris (hapus deal) — satu banner di atas tabel.
   const [rowError, setRowError] = useState('')
 
   /**
@@ -352,7 +347,7 @@ function DealTable({ formOpen, setFormOpen }) {
                       <td className="px-5 py-4 text-right font-semibold text-slate-800">{formatCurrency(d.amount)}</td>
                       <td className="px-5 py-4 text-right text-slate-500">{formatCurrency(d.weighted)}</td>
                       <td className="px-5 py-4"><Badge meta={DEAL_STATUS_META[d.status]} /></td>
-                      <td className="px-5 py-4"><PenawaranCell deal={d} setError={setRowError} /></td>
+                      <td className="px-5 py-4"><PenawaranCell deal={d} /></td>
                       <td className="px-5 py-4 text-right">
                         <button onClick={() => { setRowError(''); setToDelete(d) }} title="Hapus" className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
                       </td>
